@@ -215,9 +215,31 @@ void __attribute__((optimize("O0"))) commPoison(ncclComm_t comm) {
   comm->rank = comm->cudaDev = comm->nvmlDev = comm->nRanks = -1;
 }
 
+#ifdef ENABLE_CHECKSUM
+void* ncclCommThreadMain(void *arg) {
+  ncclComm_t comm = (ncclComm_t)arg;
+  do {
+    while (LOAD(&comm->hostDevComm.checksum_head) != LOAD(comm->hostDevComm.checksum_tail)) {
+      INFO(NCCL_INIT, "## %4d %07x %016lx", comm->rank,
+        comm->hostDevComm.checksum[LOAD(&comm->hostDevComm.checksum_head)].opCount,
+        comm->hostDevComm.checksum[LOAD(&comm->hostDevComm.checksum_head)].checksum);
+      __atomic_fetch_add(&comm->hostDevComm.checksum_head, 1, __ATOMIC_SEQ_CST);
+      if (LOAD(&comm->hostDevComm.checksum_head) >= CHECKSUM_BUFFER_SIZE) STORE(&comm->hostDevComm.checksum_head, 0);
+    }
+  } while(!LOAD(&comm->hostDevComm.checksum_exit));
+}
+#endif
+
 static ncclResult_t commFree(ncclComm_t comm) {
   if (comm == NULL)
     return ncclSuccess;
+
+#ifdef ENABLE_CHECKSUM
+  STORE(&comm->hostDevComm.checksum_exit, 1);
+  pthread_join(comm->hostDevComm.checksumThread, NULL);
+  CUDACHECK(hipHostFree((void *)comm->hostDevComm.checksum));
+  CUDACHECK(hipHostFree((void *)comm->hostDevComm.checksum_tail));
+#endif
 
 #ifdef ENABLE_PROFILING
   struct ncclProf* prof = (struct ncclProf*)malloc(sizeof(struct ncclProf));
@@ -331,6 +353,14 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank) {
   comm->argsptr = &comm->args;
 #ifdef ENABLE_PROFILING
   NCCLCHECK(ncclCudaCalloc(&comm->hostDevComm.devProf, 1));
+#endif
+
+#ifdef ENABLE_CHECKSUM
+  CUDACHECK(hipHostMalloc((void**) &comm->hostDevComm.checksum_tail, sizeof(uint32_t), hipHostMallocMapped));
+  CUDACHECK(hipHostMalloc((void**) &comm->hostDevComm.checksum, sizeof(struct ncclChecksum) * CHECKSUM_BUFFER_SIZE, hipHostMallocMapped));
+  memset(comm->hostDevComm.checksum, 0, sizeof(struct ncclChecksum) * CHECKSUM_BUFFER_SIZE);
+  comm->hostDevComm.checksum_exit = comm->hostDevComm.checksum_head = *comm->hostDevComm.checksum_tail = 0;
+  pthread_create(&comm->hostDevComm.checksumThread, NULL, ncclCommThreadMain, (void *)comm);
 #endif
 
   *comret = comm;

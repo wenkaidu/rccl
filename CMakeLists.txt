@@ -134,6 +134,10 @@ if(PROFILE)
   add_definitions(-DENABLE_PROFILING)
 endif()
 
+if(CHECKSUM)
+  add_definitions(-DENABLE_CHECKSUM)
+endif()
+
 target_link_libraries(rccl
   PRIVATE --amdgpu-target=gfx803
   PRIVATE --amdgpu-target=gfx900

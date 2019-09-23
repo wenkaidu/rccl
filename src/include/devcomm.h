@@ -233,6 +233,16 @@ struct ncclProf {
 };
 #endif
 
+#ifdef ENABLE_CHECKSUM
+#define CHECKSUM_BUFFER_SIZE 4096
+
+// only save opCount and checksum. other details should be get from NCCL_DEBUG_SUBSYS=COLL
+struct ncclChecksum {
+  uint64_t opCount;
+  uint64_t checksum;
+};
+#endif
+
 typedef enum {
   ncclDevSuccess,
   ncclDevAssertedMismatch,
@@ -253,6 +263,15 @@ struct ncclDevComm {
 #ifdef ENABLE_PROFILING
   // Profiling counters
   struct ncclProf* devProf;
+#endif
+
+#ifdef ENABLE_CHECKSUM
+  uint64_t tempA[MAXTHREADS], tempB[MAXTHREADS], tempC[MAXTHREADS];
+  uint64_t channelOpCount[MAXCHANNELS];
+  struct ncclChecksum* checksum;
+  uint32_t checksum_head, *checksum_tail;
+  pthread_t checksumThread;
+  bool checksum_exit;
 #endif
 };
 

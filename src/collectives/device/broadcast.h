@@ -67,6 +67,30 @@ __device__ void ncclBroadcastRingKernel(struct CollectiveArgs* args) {
 #ifdef ENABLE_PROFILING
   if (tid == 0) __atomic_fetch_add(&(devProf->total_cycle), clock64() - clk, __ATOMIC_SEQ_CST);
 #endif
+
+#ifdef ENABLE_CHECKSUM
+  if (tid == 0) STORE(&comm->channelOpCount[bid], args->opCount);
+
+  // last channel to calculate checksum
+  // additional synchronization is needed to make sure all channels are completed
+  if (bid == args->nChannels - 1) {
+    if (tid == 0) {
+      for (int i = 0; i < args->nChannels; i++) {
+        while (LOAD(&comm->channelOpCount[i]) < args->opCount) {};
+      }
+    }
+    __syncthreads();
+    uint64_t cs = Checksum<T>(tid, nthreads, thisOutput,
+      size, comm->tempA, comm->tempB, comm->tempC);
+    if (tid == 0) {
+      comm->checksum[LOAD(comm->checksum_tail)].opCount = args->opCount;
+      comm->checksum[LOAD(comm->checksum_tail)].checksum = cs;
+      __atomic_fetch_add(comm->checksum_tail, 1, __ATOMIC_SEQ_CST);
+      if (LOAD(comm->checksum_tail) >= CHECKSUM_BUFFER_SIZE)
+        STORE(comm->checksum_tail, 0);
+    }
+  }
+#endif
 }
 
 template<int UNROLL, class FUNC, typename T>
@@ -116,6 +140,30 @@ __device__ void ncclBroadcastRingLLKernel(struct CollectiveArgs* args) {
       LLprims.recvCopySend(thisOutput + offset, nelem);
     }
   }
+
+#ifdef ENABLE_CHECKSUM
+  if (tid == 0) STORE(&comm->channelOpCount[bid], args->opCount);
+
+  // last channel to calculate checksum
+  // additional synchronization is needed to make sure all channels are completed
+  if (bid == args->nChannels - 1) {
+    if (tid == 0) {
+      for (int i = 0; i < args->nChannels; i++) {
+        while (LOAD(&comm->channelOpCount[i]) < args->opCount) {};
+      }
+    }
+    __syncthreads();
+    uint64_t cs = Checksum<T>(tid, nthreads, thisOutput,
+      size, comm->tempA, comm->tempB, comm->tempC);
+    if (tid == 0) {
+      comm->checksum[LOAD(comm->checksum_tail)].opCount = args->opCount;
+      comm->checksum[LOAD(comm->checksum_tail)].checksum = cs;
+      __atomic_fetch_add(comm->checksum_tail, 1, __ATOMIC_SEQ_CST);
+      if (LOAD(comm->checksum_tail) >= CHECKSUM_BUFFER_SIZE)
+        STORE(comm->checksum_tail, 0);
+    }
+  }
+#endif
 }
 
 template<int UNUSED, class FUNC, typename T>
