@@ -198,6 +198,16 @@ struct ncclColl {
 static_assert(sizeof(struct ncclColl) == (0x10*sizeof(int)), "ncclColl must have a pow2 size");
 #pragma pack(pop)   /* restore original alignment from stack */
 
+#ifdef ENABLE_CHECKSUM
+#define CHECKSUM_BUFFER_SIZE 1024
+
+// only save opCount and checksum. other details should be get from NCCL_DEBUG_SUBSYS=COLL
+struct ncclChecksum {
+  uint64_t opCount;
+  uint64_t checksum;
+};
+#endif
+
 struct ncclComm {
   struct ncclRing rings[MAXRINGS];
 
@@ -244,6 +254,15 @@ struct ncclComm {
   int* intraCC; // Only to check all have the same ComputeCap and disable CGMode if not
   struct ncclColl args;
   struct ncclColl* argsptr;
+
+#ifdef ENABLE_CHECKSUM
+  uint64_t tempA[MAXTHREADS], tempB[MAXTHREADS], tempC[MAXTHREADS];
+  uint64_t channelOpCount[MAXRINGS];
+  struct ncclChecksum* checksum;
+  uint32_t checksum_head, *checksum_tail;
+  pthread_t checksumThread;
+  bool checksum_exit;
+#endif
 };
 
 // Convert volatile access to atomic

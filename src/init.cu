@@ -194,9 +194,31 @@ ncclResult_t ncclGetUniqueId(ncclUniqueId* out) {
   return bootstrapGetUniqueId(out);
 }
 
+#ifdef ENABLE_CHECKSUM
+void* ncclCommThreadMain(void *arg) {
+  ncclComm_t comm = (ncclComm_t)arg;
+  do {
+    while (LOAD(&comm->checksum_head) != LOAD(comm->checksum_tail)) {
+      INFO(NCCL_INIT, "## %4d %07x %016lx", comm->rank,
+        comm->checksum[LOAD(&comm->checksum_head)].opCount,
+        comm->checksum[LOAD(&comm->checksum_head)].checksum);
+      __atomic_fetch_add(&comm->checksum_head, 1, __ATOMIC_SEQ_CST);
+      if (LOAD(&comm->checksum_head) >= CHECKSUM_BUFFER_SIZE) STORE(&comm->checksum_head, 0);
+    }
+  } while(!LOAD(&comm->checksum_exit));
+}
+#endif
+
 static ncclResult_t commFree(ncclComm_t comm) {
   if (comm == NULL)
     return ncclSuccess;
+
+#ifdef ENABLE_CHECKSUM
+  STORE(&comm->checksum_exit, 1);
+  pthread_join(comm->checksumThread, NULL);
+  CUDACHECK(hipHostFree((void *)comm->checksum));
+  CUDACHECK(hipHostFree((void *)comm->checksum_tail));
+#endif
 
   CUDACHECK(hipFree(comm->devComm));
 
@@ -258,6 +280,14 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank) {
 #endif
 
   comm->argsptr = &comm->args;
+
+#ifdef ENABLE_CHECKSUM
+  CUDACHECK(hipHostMalloc((void**) &comm->checksum_tail, sizeof(uint32_t), hipHostMallocMapped));
+  CUDACHECK(hipHostMalloc((void**) &comm->checksum, sizeof(struct ncclChecksum) * CHECKSUM_BUFFER_SIZE, hipHostMallocMapped));
+  memset(comm->checksum, 0, sizeof(struct ncclChecksum) * CHECKSUM_BUFFER_SIZE);
+  comm->checksum_exit = comm->checksum_head = *comm->checksum_tail = 0;
+  pthread_create(&comm->checksumThread, NULL, ncclCommThreadMain, (void *)comm);
+#endif
 
   *comret = comm;
   return ncclSuccess;

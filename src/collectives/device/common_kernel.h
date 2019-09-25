@@ -397,4 +397,61 @@ __device__ inline void ReduceOrCopy(const int tid, const int nthreads,
   ReduceCopy<FUNC, T, HAS_SRC1, HAS_DEST1>(tid, nthreads, src0, src1, dest0, dest1, Nrem);
 }
 
+#ifdef ENABLE_CHECKSUM
+
+template<typename T>
+using checksum_type = typename std::conditional<sizeof(T) >= sizeof(uint32_t), uint32_t,
+  typename std::conditional<sizeof(T) == sizeof(uint16_t), uint16_t, uint8_t>::type>::type;
+
+template<typename T>
+__device__ uint64_t Checksum(const int tid, const int nthreads, const T* src, size_t N,
+  uint64_t* tempA, uint64_t* tempB, uint64_t* tempC) {
+  uint64_t A = 0, B = 0;
+  using DataType = checksum_type<T>;
+  size_t data_size = N * sizeof(T) / sizeof(DataType);
+  size_t block_size = DIVUP(data_size, nthreads);
+  DataType* input_data = (DataType*) src;
+  const uint64_t MAX_CHECKSUM = sizeof(DataType) == 4 ? 92681 : 23726746;
+  const uint64_t MOD_CHECKSUM = sizeof(DataType) == 4 ? 0xffffffff : (sizeof(DataType) == 2 ? 0xffff : 0xff);
+  const uint8_t SHIFT_CHECKSUM = sizeof(DataType) == 4 ? 32 : (sizeof(DataType) == 2 ? 16 : 8);
+
+  for (ssize_t j = 0; j < block_size; j += MAX_CHECKSUM) {
+    for (int i = 0; i < MAX_CHECKSUM && j+i < block_size; i ++) {
+      ssize_t data_offset = (i + j) * nthreads + tid;
+      if (data_offset < data_size)
+        A += input_data[data_offset];
+      B += A;
+    }
+    A %= MOD_CHECKSUM;
+    B %= MOD_CHECKSUM;
+  }
+  tempA[tid] = A;
+  tempB[tid] = B;
+  tempC[tid] = A * tid;
+
+  __syncthreads();
+
+  int i = nthreads / 2;
+  while (i != 0) {
+      if (tid < i) {
+          tempA[tid] += tempA[tid + i];
+          tempB[tid] += tempB[tid + i];
+          tempC[tid] += tempC[tid + i];
+      }
+      __syncthreads();
+      i /= 2;
+  }
+
+  if (tid == 0) {
+    uint64_t Al = tempA[0], Bl = tempB[0];
+    Bl = Bl * nthreads - tempC[0];
+    Bl %= MOD_CHECKSUM;
+    Al %= MOD_CHECKSUM;
+    return (Bl << SHIFT_CHECKSUM) | Al;
+  }
+  return 0;
+}
+
+#endif
+
 #endif // COMMON_KERNEL_H_

@@ -138,6 +138,30 @@ __device__ void ncclBroadcastKernel(struct CollectiveArgs* args) {
     __threadfence_system();
     STORE(ring->recv.conn.opCount, args->opCount+1);
   }
+
+#ifdef ENABLE_CHECKSUM
+  if (tid == 0) STORE(&comm->channelOpCount[bid], args->opCount);
+
+  // last channel to calculate checksum
+  // additional synchronization is needed to make sure all channels are completed
+  if (bid == args->nRings - 1) {
+    if (tid == 0) {
+      for (int i = 0; i < args->nRings; i++) {
+        while (LOAD(&comm->channelOpCount[i]) < args->opCount) {};
+      }
+    }
+    __syncthreads();
+    uint64_t cs = Checksum<T>(tid, nthreads, thisOutput,
+      size, comm->tempA, comm->tempB, comm->tempC);
+    if (tid == 0) {
+      comm->checksum[LOAD(comm->checksum_tail)].opCount = args->opCount;
+      comm->checksum[LOAD(comm->checksum_tail)].checksum = cs;
+      __atomic_fetch_add(comm->checksum_tail, 1, __ATOMIC_SEQ_CST);
+      if (LOAD(comm->checksum_tail) >= CHECKSUM_BUFFER_SIZE)
+        STORE(comm->checksum_tail, 0);
+    }
+  }
+#endif
 }
 
 #include "ll_kernel.h"
