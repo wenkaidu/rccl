@@ -19,7 +19,7 @@
 
 /* Declare all collective operations */
 #define DECL_COLL5(coll, op, dtype) \
-  extern __device__ __attribute__((noinline)) void NCCL_COLL_NAME(coll, op, dtype)(struct CollectiveArgs* args); \
+  extern __device__ __attribute__((always_inline)) void NCCL_COLL_NAME(coll, op, dtype)(struct CollectiveArgs* args); \
   extern __global__ void NCCL_KERN_NAME(coll, op, dtype)(struct ncclColl c); \
 
 #define DECL_COLL4(coll, op, dtype) \
@@ -45,8 +45,8 @@
 #define DECL_COLL(coll) \
   DECL_COLL2(coll, sum) \
   DECL_COLL2(coll, prod) \
-  DECL_COLL2(coll, min) \
-  DECL_COLL2(coll, max)
+  DECL_COLL2(coll, max) \
+  DECL_COLL2(coll, min)
 
 #define DECL_ALL_COLLS \
   DECL_COLL2(ncclBroadcast, copy) \

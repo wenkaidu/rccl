@@ -181,40 +181,21 @@ __global__ void NCCL_KERN_NAME(coll, op, dtype)(struct ncclColl firstColl) { \
     c = &localColl; \
     load_coll(c, channel->devCollectives+channel->collFifoHead, tid, &abortCount); \
   } \
-  while (1) { \
-    if (tid < c->args.nThreads) { \
-      if (c->funcIndex == fIndex) { \
-        coll##Kernel<COLL_UNROLL, ncclFunc<ctype>, ctype>(&c->args); \
-      } else { \
-        NCCL_CALL_FUNCTIONS(c); \
-      } \
+  if (tid < c->args.nThreads) { \
+    if (c->funcIndex == fIndex) { \
+      coll##Kernel<COLL_UNROLL, ncclFunc<ctype>, ctype>(&c->args); \
     } \
-    int nextIndex = c->nextIndex; \
-    if (tid == 0) channel->collFifoHead = nextIndex; \
- \
-    if (c->active == 2) { \
-      return; \
-    } \
- \
-    /* Load next collective operation*/ \
-    c = &localColl; /* for bid 0 */ \
-    load_coll(c, channel->devCollectives+nextIndex, tid, &abortCount); \
   } \
+  int nextIndex = c->nextIndex; \
+  if (tid == 0) channel->collFifoHead = nextIndex; \
 }
-
-#define IMPL_COLL_KERN_sum(coll, op, ncclFunc, dtype, ctype, fIndex) \
-  IMPL_COLL_KERN(coll, op, ncclFunc, dtype, ctype, fIndex)
-#define IMPL_COLL_KERN_copy(coll, op, ncclFunc, dtype, ctype, fIndex) \
-  IMPL_COLL_KERN(coll, op, ncclFunc, dtype, ctype, fIndex)
-#define IMPL_COLL_KERN_prod(coll, op, ncclFunc, dtype, ctype, fIndex)
-#define IMPL_COLL_KERN_min(coll, op, ncclFunc, dtype, ctype, fIndex)
-#define IMPL_COLL_KERN_max(coll, op, ncclFunc, dtype, ctype, fIndex)
 
 // Only generate inline kernels for LL
 #define IMPL_COLL4(coll, op, ncclFunc, dtype, ctype, ncclColl, ncclOp, ncclType, al) \
   IMPL_COLL_FUNC(coll, op, ncclFunc, dtype, ctype) \
   IMPL_COLL_FUNC(coll##LL, op, ncclFunc, dtype, ctype) \
-  IMPL_COLL_KERN_##op(coll##LL, op, ncclFunc, dtype, ctype, FUNC_INDEX(ncclColl, ncclOp, ncclType, 1, al)) \
+  IMPL_COLL_KERN(coll, op, ncclFunc, dtype, ctype, FUNC_INDEX(ncclColl, ncclOp, ncclType, 0, al)) \
+  IMPL_COLL_KERN(coll##LL, op, ncclFunc, dtype, ctype, FUNC_INDEX(ncclColl, ncclOp, ncclType, 1, al))
 
 #define IMPL_COLL3(coll, op, ncclFunc, dtype, ctype, ncclColl, ncclOp, ncclType) \
   IMPL_COLL4(coll##Ring, op, ncclFunc, dtype, ctype, ncclColl, ncclOp, ncclType, 0) \

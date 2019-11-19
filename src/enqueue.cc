@@ -13,7 +13,7 @@
 
 // Only generate inline kernels for LL
 #define NCCL_FUNC5(coll, op, dtype) \
-  NCCL_KERN_NAME(coll##LL, op, dtype), \
+  NCCL_KERN_NAME(coll, op, dtype), \
   NCCL_KERN_NAME(coll##LL, op, dtype)
 
 #define NCCL_FUNC4(coll, op, dtype) \
@@ -47,9 +47,9 @@
 // Must be consistent with ncclRedOp_t -- but we only generate kernel for sums.
 #define NCCL_FUNCS2A(coll) \
   NCCL_FUNCS3A(coll, sum), \
-  NCCL_FUNCS3A(coll, sum), \
-  NCCL_FUNCS3A(coll, sum), \
-  NCCL_FUNCS3A(coll, sum)
+  NCCL_FUNCS3A(coll, prod), \
+  NCCL_FUNCS3A(coll, max), \
+  NCCL_FUNCS3A(coll, min)
 #define NCCL_FUNCS2B(coll) \
   NCCL_FUNCS3B(coll, copy), \
   NCCL_FUNCS3B(coll, copy), \
