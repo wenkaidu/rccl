@@ -23,7 +23,7 @@ typedef uint64_t PackType;
 
 template<class FUNC, typename T>
 struct MULTI {
-  __device__ PackType operator()(const PackType x, const PackType y) const
+  inline __device__ PackType operator()(const PackType x, const PackType y) const
   {
     return FUNC()(x, y);
   }
@@ -259,7 +259,7 @@ typedef ulong2 Pack128;
 
 template<class FUNC, typename T>
 struct MULTI128 {
-  __device__ void operator()(Pack128& x, Pack128& y) {
+  inline __device__ void operator()(Pack128& x, Pack128& y) {
     x.x = MULTI<FUNC, T>()(x.x, y.x);
     x.y = MULTI<FUNC, T>()(x.y, y.y);
   }
@@ -283,7 +283,7 @@ inline __device__ void Store128(Pack128* p, Pack128& v) {
 }
 
 template<class FUNC, typename T, int MINSRCS, int MAXSRCS, int MINDSTS, int MAXDSTS>
-__device__ void ReduceCopyMulti(const int tid, const int nthreads,
+inline __device__ void ReduceCopyMulti(const int tid, const int nthreads,
     int nsrcs, const T* srcs[MAXSRCS], int ndsts, T* dsts[MAXDSTS],
     const int offset, const int N) {
   for (int idx = offset+tid; idx < offset+N; idx += nthreads) {
@@ -303,7 +303,7 @@ __device__ void ReduceCopyMulti(const int tid, const int nthreads,
 #define WARP_SIZE 64
 
 template<class FUNC, typename T, int UNROLL, int MINSRCS, int MAXSRCS, int MINDSTS, int MAXDSTS>
-__device__ void ReduceCopy128bMulti( const int w, const int nw, const int t,
+inline __device__ void ReduceCopy128bMulti( const int w, const int nw, const int t,
     int nsrcs, const T* s[MAXSRCS], int ndsts, T* d[MAXDSTS],
     const int elemOffset, const int Npack) {
   const int inc = nw * UNROLL * WARP_SIZE;
@@ -346,7 +346,7 @@ __device__ void ReduceCopy128bMulti( const int w, const int nw, const int t,
 }
 
 template <typename T>
-__device__ int ptrAlign128(T* ptr) { return (uint64_t)ptr % alignof(Pack128); }
+inline __device__ int ptrAlign128(T* ptr) { return (uint64_t)ptr % alignof(Pack128); }
 
 #if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
 // Use UNROLL 4 for 2 SRCs, 2 for the rest
@@ -358,7 +358,7 @@ __device__ int ptrAlign128(T* ptr) { return (uint64_t)ptr % alignof(Pack128); }
 #endif
 
 template<int UNROLL, class FUNC, typename T, int MINSRCS, int MAXSRCS, int MINDSTS, int MAXDSTS>
-__device__ void ReduceOrCopyMulti(const int tid, const int nthreads,
+inline __device__ void ReduceOrCopyMulti(const int tid, const int nthreads,
     int nsrcs, const T* srcs[MAXSRCS], int ndsts, T* dsts[MAXDSTS],
     int N) {
   int Nrem = N;

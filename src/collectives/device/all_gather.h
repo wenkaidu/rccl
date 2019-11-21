@@ -10,7 +10,7 @@
 #include "collectives.h"
 
 template<int UNROLL, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclAllGatherRingKernel(struct CollectiveArgs* args) {
   const int tid = threadIdx.x;
   const int nthreads = blockDim.x;
@@ -69,11 +69,11 @@ __device__ void ncclAllGatherRingKernel(struct CollectiveArgs* args) {
 }
 
 template<int UNROLL, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclAllGatherTreeKernel(struct CollectiveArgs* args) { }
 
 template<int UNUSED, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclAllGatherRingLLKernel(struct CollectiveArgs* args) {
   const int tid = threadIdx.x;
   const int bid = args->bid;
@@ -132,5 +132,5 @@ __device__ void ncclAllGatherRingLLKernel(struct CollectiveArgs* args) {
 }
 
 template<int UNUSED, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclAllGatherTreeLLKernel(struct CollectiveArgs* args) { }

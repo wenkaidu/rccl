@@ -56,12 +56,12 @@ class ncclPrimitives {
   struct ncclDevComm* comm;
   uint32_t* abortCount;
 
-  __device__ int recvOffset(int i) { return (recvStep[i]%NCCL_STEPS)*stepSize; }
-  __device__ int sendOffset(int i) { return (sendStep[i]%NCCL_STEPS)*stepSize; }
-  __device__ const T* recvPtr(int i) { return ((const T*)recvBuff[i])+recvOffset(i); }
-  __device__ T* sendPtr(int i) { return ((T*)sendBuff[i])+sendOffset(i); }
+  inline __device__ int recvOffset(int i) { return (recvStep[i]%NCCL_STEPS)*stepSize; }
+  inline __device__ int sendOffset(int i) { return (sendStep[i]%NCCL_STEPS)*stepSize; }
+  inline __device__ const T* recvPtr(int i) { return ((const T*)recvBuff[i])+recvOffset(i); }
+  inline __device__ T* sendPtr(int i) { return ((T*)sendBuff[i])+sendOffset(i); }
 
-  __device__ void barrier() {
+  inline __device__ void barrier() {
 #if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
     __syncthreads();
 #else
@@ -72,7 +72,7 @@ class ncclPrimitives {
   uint32_t mismatch = 0;
   const uint64_t opCount;
 
-  __device__ void checkMismatch(volatile uint64_t* remoteOpCount) {
+  inline __device__ void checkMismatch(volatile uint64_t* remoteOpCount) {
     if (mismatch) {
       // In non-LL, we use _threadfence_system before incrementing opCount, yet we are still waiting for credits here, so there must be a size mismatch
       STORE(comm->fatalDevError, ncclDevAssertedMismatch);
@@ -84,7 +84,7 @@ class ncclPrimitives {
   uint32_t spins = 0;
   uint32_t abort = 0;
 
-  __device__ int checkAbort(volatile uint64_t* remoteOpCount) {
+  inline __device__ int checkAbort(volatile uint64_t* remoteOpCount) {
     spins++;
     if (spins == SPINS_BEFORE_CHECK_ABORT) {
       abort = LOAD(comm->abortFlag);
@@ -94,7 +94,7 @@ class ncclPrimitives {
     return abort;
   }
 
-  __device__ void waitRecv(int i) {
+  inline __device__ void waitRecv(int i) {
     spins = 0;
     mismatch = 0;
     recvStep[i] += SLICESTEPS;
@@ -112,7 +112,7 @@ class ncclPrimitives {
     }
   }
 
-  __device__ void waitSend(int i) {
+  inline __device__ void waitSend(int i) {
     spins = 0;
     mismatch = 0;
     sendStep[i] += SLICESTEPS;
@@ -140,12 +140,12 @@ class ncclPrimitives {
     STORE(sendConn[i]->tail, sendStep[i]);
   }
 
-  __device__ void postSendSize(int i, int size) {
+  inline __device__ void postSendSize(int i, int size) {
     if (sendConn[i]->fifo) STORE(sendConn[i]->fifo+((sendStep[i]-SLICESTEPS)%NCCL_STEPS), size);
   }
 
   template <int DIRECTRECV>
-  __device__ const T* directRecvPtr(int i, int directOffset) {
+  inline __device__ const T* directRecvPtr(int i, int directOffset) {
 #if defined(RCCL_USE_DIRECT_BUFFER)
     return DIRECTRECV && recvDirectBuff[i] ? recvDirectBuff[i]+directOffset : recvPtr(i);
 #else
@@ -154,7 +154,7 @@ class ncclPrimitives {
   }
 
   template <int DIRECTSEND>
-  __device__ T* directSendPtr(int i, int directOffset) {
+  inline __device__ T* directSendPtr(int i, int directOffset) {
   #if defined(RCCL_USE_DIRECT_BUFFER)
     return DIRECTSEND && sendDirectBuff[i] ? sendDirectBuff[i]+directOffset : sendPtr(i);
   #else
@@ -163,7 +163,7 @@ class ncclPrimitives {
   }
 
   template <int DIRECTRECV, int DIRECTSEND, int RECV, int SEND, int SRC, int DST>
-  __device__ void
+  inline __device__ void
   GenericOp(const T* srcPtr, T* dstPtr, int nelem, int directOffset) {
     int offset = 0;
     int sliceSize = stepSize * SLICESTEPS;
@@ -217,7 +217,7 @@ class ncclPrimitives {
     }
   }
 
-  __device__ void loadRecvConn(struct ncclConnInfo* conn, int i, T* directBuff) {
+  inline __device__ void loadRecvConn(struct ncclConnInfo* conn, int i, T* directBuff) {
     recvConn[i] = conn;
     recvBuff[i] = (const T*)LOAD(&recvConn[i]->buff);
     recvStep[i] = LOAD(&recvConn[i]->step);
@@ -238,7 +238,7 @@ class ncclPrimitives {
     nrecv++;
   }
 
-  __device__ void loadSendConn(struct ncclConnInfo* conn, int i, T* directBuff) {
+  inline __device__ void loadSendConn(struct ncclConnInfo* conn, int i, T* directBuff) {
     sendConn[i] = conn;
     sendBuff[i] = (T*)LOAD(&sendConn[i]->buff);
     sendStep[i] = LOAD(&sendConn[i]->step);
@@ -260,7 +260,7 @@ class ncclPrimitives {
     nsend++;
   }
 
-  __device__ void saveRecvConn(int i) {
+  inline __device__ void saveRecvConn(int i) {
     if (tid == i) {
       STORE(&recvConn[i]->step, recvStep[i]);
       __threadfence_system();
@@ -268,7 +268,7 @@ class ncclPrimitives {
     }
   }
 
-  __device__ void saveSendConn(int i) {
+  inline __device__ void saveSendConn(int i) {
     if (tid == WARP_SIZE+i) {
       STORE(&sendConn[i]->step, sendStep[i]);
       __threadfence_system();
@@ -277,7 +277,7 @@ class ncclPrimitives {
   }
 
  public:
-  __device__
+  __device__ __attribute__((always_inline))
   ncclPrimitives(const int tid, const int nthreads, int* recvPeers, int* sendPeers, T* directBuff, int stepSize, struct ncclChannel* channel, struct ncclDevComm* comm, const uint64_t opCount)
     : comm(comm), tid(tid), nthreads(nthreads), stepSize(stepSize), opCount(opCount) {
     // Make sure step is updated before we read it
@@ -289,63 +289,63 @@ class ncclPrimitives {
     for (int i=0; i<NSEND && sendPeers[i] >= 0; i++) loadSendConn(&channel->devPeers[sendPeers[i]].send.conn, i, 0);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   send(const T* src, int nelem) {
     GenericOp<0, 0, 0, 1, 1, 0>(src, NULL, nelem, 0);
   }
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   directSend(const T* src, int directOffset, int nelem) {
     GenericOp<0, 1, 0, 1, 1, 0>(src, NULL, nelem, directOffset);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   recv(T* dst, int nelem) {
     GenericOp<0, 0, 1, 0, 0, 1>(NULL, dst, nelem, 0);
   }
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   directRecv(T* dst, int directOffset, int nelem) {
     GenericOp<1, 0, 1, 0, 0, 1>(NULL, dst, nelem, directOffset);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   copySend(const T* src, T* dst, int nelem) {
     GenericOp<0, 0, 0, 1, 1, 1>(src, dst, nelem, 0);
   }
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   directCopySend(const T* src, T* dst, int directOffset, int nelem) {
     GenericOp<0, 1, 0, 1, 1, 1>(src, dst, nelem, directOffset);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   recvCopySend(T* dst, int nelem) {
     GenericOp<0, 0, 1, 1, 0, 1>(NULL, dst, nelem, 0);
   }
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   directRecvCopySend(T* dst, int directOffset, int nelem) {
     GenericOp<1, 1, 1, 1, 0, 1>(NULL, dst, nelem, directOffset);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   recvReduceCopy(const T* src, T* dst, int nelem) {
     GenericOp<0, 0, 1, 0, 1, 1>(src, dst, nelem, 0);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   recvReduceSend(const T* src, int nelem) {
     GenericOp<0, 0, 1, 1, 1, 0>(src, NULL, nelem, 0);
   }
 
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   recvReduceCopySend(const T* src, T* dst, int nelem) {
     GenericOp<0, 0, 1, 1, 1, 1>(src, dst, nelem, 0);
   }
-  __device__ void
+  __device__ __attribute__((always_inline)) void
   directRecvReduceCopySend(const T* src, T* dst, int directOffset, int nelem) {
     // Direct is only for the send part
     GenericOp<0, 1, 1, 1, 1, 1>(src, dst, nelem, directOffset);
   }
 
-  __device__ ~ncclPrimitives() {
+  __device__ __attribute__((always_inline)) ~ncclPrimitives() {
     // Save steps for next collective. Have thread 0 do it to be compatible
     // with the way LL works.
     for (int i=0; i<NRECV && i<nrecv; i++) saveRecvConn(i);
@@ -373,20 +373,19 @@ class ncclLLPrimitives {
   struct ncclDevComm* comm;
   uint32_t* abortCount;
 
-  __device__ int recvOffset(int i) { return (recvStep[i]%NCCL_STEPS)*NCCL_LL_SLICE_LINES; }
-  __device__ int sendOffset(int i) { return (sendStep[i]%NCCL_STEPS)*NCCL_LL_SLICE_LINES; }
-  __device__ union ncclLLFifoLine* recvPtr(int i) { return recvBuff[i]+recvOffset(i); }
-  __device__ union ncclLLFifoLine* sendPtr(int i) { return sendBuff[i]+sendOffset(i); }
-  __device__ uint32_t recvFlag(int i) { return NCCL_LL_FLAG(recvStep[i]+1); }
-  __device__ uint32_t sendFlag(int i) { return NCCL_LL_FLAG(sendStep[i]+1); }
-
+  inline __device__ int recvOffset(int i) { return (recvStep[i]%NCCL_STEPS)*NCCL_LL_SLICE_LINES; }
+  inline __device__ int sendOffset(int i) { return (sendStep[i]%NCCL_STEPS)*NCCL_LL_SLICE_LINES; }
+  inline __device__ union ncclLLFifoLine* recvPtr(int i) { return recvBuff[i]+recvOffset(i); }
+  inline __device__ union ncclLLFifoLine* sendPtr(int i) { return sendBuff[i]+sendOffset(i); }
+  inline __device__ uint32_t recvFlag(int i) { return NCCL_LL_FLAG(recvStep[i]+1); }
+  inline __device__ uint32_t sendFlag(int i) { return NCCL_LL_FLAG(sendStep[i]+1); }
 #if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
 #else
   // Exit If Abort Barrier : make sure all threads exit consistently
   // Each thread sets a predicate to true if val == 1
   // all CTA's threads enter the barrier and do a popc on their predicates being True
   // If any of the thread's predicate was True, all the threads call exit()
-  __device__ void exitIfAbortLocalBarrier() {
+  inline __device__ void exitIfAbortLocalBarrier() {
     uint32_t popc;
     asm ("{");
     asm volatile ("   .reg .pred barr_pred;");
@@ -400,7 +399,7 @@ class ncclLLPrimitives {
   }
 #endif
 
-  __device__ void barrier() {
+  inline __device__ void barrier() {
 #if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
     __syncthreads();
 #else
@@ -411,7 +410,7 @@ class ncclLLPrimitives {
   uint32_t mismatch = 0;
   const uint64_t opCount;
 
-  __device__ void checkMismatch(volatile uint64_t* remoteOpCount) {
+  inline __device__ void checkMismatch(volatile uint64_t* remoteOpCount) {
     if (mismatch > 20) {
       // We have seen that the peer advanced opcount so many times yet we are still waiting for credit of current op, so it is _most likely_ a mismatch
       // Note that we are not using _threadfence_system in LL so the error cannot be asserted
@@ -424,7 +423,7 @@ class ncclLLPrimitives {
   uint32_t spins = 0;
   uint32_t abort = 0;
 
-  __device__ int checkAbort(volatile uint64_t* remoteOpCount) {
+  inline __device__ int checkAbort(volatile uint64_t* remoteOpCount) {
     spins++;
     if (spins == SPINS_BEFORE_CHECK_ABORT) {
       abort = LOAD(comm->abortFlag);
@@ -434,7 +433,7 @@ class ncclLLPrimitives {
     return abort;
   }
 
-  __device__ void waitSend(int i, int nbytes) {
+  inline __device__ void waitSend(int i, int nbytes) {
     spins = 0;
     mismatch = 0;
     if (tid == WARP_SIZE+i) {
@@ -449,12 +448,12 @@ class ncclLLPrimitives {
     }
   }
 
-  __device__ void postRecv(int i) {
+  inline __device__ void postRecv(int i) {
     recvStep[i]++;
     if (tid == i) STORE(postPtr, recvStep[i]);
   }
 
-  __device__ void postSend(int i, int offset) {
+  inline __device__ void postSend(int i, int offset) {
     // LL Cleanup : write all flags in the slice to make sure we don't have
     // data corruption when flag loops over.
     if ((sendStep[i] & NCCL_LL_CLEAN_MASK) == NCCL_LL_CLEAN_MASK) {
@@ -506,18 +505,18 @@ class ncclLLPrimitives {
   }
 
   // Using memcpy handles misaligned pointers.
-  __device__ uint64_t readAL(uint64_t* src) {
+  inline __device__ uint64_t readAL(uint64_t* src) {
     uint64_t val;
     memcpy((char*)&val, (char*)src, sizeof(uint64_t));
     return val;
   }
 
-  __device__ void storeAL(uint64_t* dst, uint64_t val, uint32_t nbytes) {
+  inline __device__ void storeAL(uint64_t* dst, uint64_t val, uint32_t nbytes) {
     memcpy((char*)dst, (char*)&val, nbytes);
   }
 
   template <int RECV, int SEND, int SRC, int DST>
-  __device__ void LLGenericOp(const T* srcPtr, T* dstPtr, int nelem) {
+  inline __device__ void LLGenericOp(const T* srcPtr, T* dstPtr, int nelem) {
     uint32_t nbytes = nelem < 0 ? 0 : nelem*sizeof(T);
     FOR_SEND(waitSend, nbytes*2);
     barrier();
@@ -560,7 +559,7 @@ class ncclLLPrimitives {
     FOR_SEND(postSend, offset);
   }
 
-  __device__ void loadRecvConn(struct ncclConnInfo* conn, int i) {
+  inline __device__ void loadRecvConn(struct ncclConnInfo* conn, int i) {
     recvConn[i] = conn;
     recvBuff[i] = recvConn[i]->llBuff;
     recvStep[i] = recvConn[i]->step;
@@ -571,7 +570,7 @@ class ncclLLPrimitives {
     nrecv++;
   }
 
-  __device__ void loadSendConn(struct ncclConnInfo* conn, int i) {
+  inline __device__ void loadSendConn(struct ncclConnInfo* conn, int i) {
     sendConn[i] = conn;
     sendBuff[i] = sendConn[i]->llBuff;
     sendStep[i] = sendConn[i]->step;
@@ -584,7 +583,7 @@ class ncclLLPrimitives {
     nsend++;
   }
 
-  __device__ void saveRecvConn(int i) {
+  inline __device__ void saveRecvConn(int i) {
     if (tid == i) {
       recvConn[i]->step = recvStep[i];
       __atomic_fetch_add(recvConn[i]->opCountLoc, 1, __ATOMIC_SEQ_CST);
@@ -592,7 +591,7 @@ class ncclLLPrimitives {
     }
   }
 
-  __device__ void saveSendConn(int i) {
+  inline __device__ void saveSendConn(int i) {
     if (tid == WARP_SIZE+i) {
       sendConn[i]->step = sendStep[i];
       __atomic_fetch_add(sendConn[i]->opCountLoc, 1, __ATOMIC_SEQ_CST);
@@ -601,7 +600,7 @@ class ncclLLPrimitives {
   }
 
  public:
-  __device__
+  __device__ __attribute__((always_inline))
   ncclLLPrimitives(const int tid, const int nthreads, int* recvPeers, int* sendPeers, struct ncclChannel* channel, struct ncclDevComm* comm, const uint64_t opCount)
     : comm(comm), tid(tid), nthreads(nthreads), opCount(opCount) {
     // Make sure step is updated before we read it.
@@ -612,35 +611,35 @@ class ncclLLPrimitives {
     for (int i=0; i<NSEND && sendPeers[i] >= 0; i++) loadSendConn(&channel->devPeers[sendPeers[i]].send.conn, i);
   }
 
-  __device__ void send(const T* src, int nelem) {
+  __device__ __attribute__((always_inline)) void send(const T* src, int nelem) {
     return LLGenericOp<0, 1, 1, 0>(src, NULL, nelem);
   }
 
-  __device__ void recv(T* dst, int nelem) {
+  __device__ __attribute__((always_inline)) void recv(T* dst, int nelem) {
     return LLGenericOp<1, 0, 0, 1>(NULL, dst, nelem);
   }
 
-  __device__ void recvReduceSend(const T* src, int nelem) {
+  __device__ __attribute__((always_inline)) void recvReduceSend(const T* src, int nelem) {
     return LLGenericOp<1, 1, 1, 0>(src, NULL, nelem);
   }
 
-  __device__ void recvReduceCopy(const T* src, T* dst, int nelem) {
+  __device__ __attribute__((always_inline)) void recvReduceCopy(const T* src, T* dst, int nelem) {
     return LLGenericOp<1, 0, 1, 1>(src, dst, nelem);
   }
 
-  __device__ void copySend(const T* src, T* dst, int nelem) {
+  __device__ __attribute__((always_inline)) void copySend(const T* src, T* dst, int nelem) {
     return LLGenericOp<0, 1, 1, 1>(src, dst, nelem);
   }
 
-  __device__ void recvCopySend(T* dst, int nelem) {
+  __device__ __attribute__((always_inline)) void recvCopySend(T* dst, int nelem) {
     return LLGenericOp<1, 1, 0, 1>(NULL, dst, nelem);
   }
 
-  __device__ void recvReduceCopySend(const T* src, T* dst, int nelem) {
+  __device__ __attribute__((always_inline)) void recvReduceCopySend(const T* src, T* dst, int nelem) {
     return LLGenericOp<1, 1, 1, 1>(src, dst, nelem);
   }
 
-  __device__ ~ncclLLPrimitives() {
+  __device__ __attribute__((always_inline)) ~ncclLLPrimitives() {
     // Save steps for the next operation
     for (int i=0; i<NRECV && i<nrecv; i++) saveRecvConn(i);
     for (int i=0; i<NSEND && i<nsend; i++) saveSendConn(i);

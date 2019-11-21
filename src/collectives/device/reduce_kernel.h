@@ -60,7 +60,7 @@ protected:
 
 template<typename T>
 struct FuncSum : private FuncBase<T> {
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     using Cvt = typename FuncBase<T>::Cvt;
 
@@ -70,14 +70,14 @@ struct FuncSum : private FuncBase<T> {
     return tmp_x.data;
   }
   template<typename U = T, typename std::enable_if<!std::is_same<T, U>{}>* = nullptr>
-  __device__ T operator()(const T x, const T y) const {
+  inline __device__ T operator()(const T x, const T y) const {
     return x + y;
   }
 };
 
 template<typename T>
 struct FuncProd : private FuncBase<T> {
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     using Cvt = typename FuncBase<T>::Cvt;
 
@@ -87,14 +87,14 @@ struct FuncProd : private FuncBase<T> {
     return tmp_x.data;
   }
   template<typename U = T, typename std::enable_if<!std::is_same<T, U>{}>* = nullptr>
-  __device__ T operator()(const T x, const T y) const {
+  inline __device__ T operator()(const T x, const T y) const {
     return x * y;
   }
 };
 
 template<typename T>
 struct FuncMax : private FuncBase<T> {
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     using Cvt = typename FuncBase<T>::Cvt;
 
@@ -108,14 +108,14 @@ struct FuncMax : private FuncBase<T> {
     return tmp_x.data;
   }
   template<typename U = T, typename std::enable_if<!std::is_same<T, U>{}>* = nullptr>
-  __device__ T operator()(const T x, const T y) const {
+  inline __device__ T operator()(const T x, const T y) const {
     return (x < y) ? y : x;
   }
 };
 
 template<typename T>
 struct FuncMin : private FuncBase<T> {
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     using Cvt = typename FuncBase<T>::Cvt;
 
@@ -129,7 +129,7 @@ struct FuncMin : private FuncBase<T> {
     return tmp_x.data;
   }
   template<typename U = T, typename std::enable_if<!std::is_same<T, U>{}>* = nullptr>
-  __device__ T operator()(const T x, const T y) const {
+  inline __device__ T operator()(const T x, const T y) const {
     return (x < y) ? x : y;
   }
 };
@@ -137,7 +137,7 @@ struct FuncMin : private FuncBase<T> {
 template<>
 struct FuncSum<rccl_bfloat16> {
   static constexpr auto n = sizeof(PackType) / sizeof(rccl_bfloat16);
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     union converter { PackType storage; rccl_bfloat16 vec[n]; };
     static_assert(sizeof(PackType) == sizeof(converter), "PackType must be the same size of converter.");
@@ -149,7 +149,7 @@ struct FuncSum<rccl_bfloat16> {
     }
     return cr.storage;
   }
-  __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
+  inline __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
     return x + y;
   }
 };
@@ -157,7 +157,7 @@ struct FuncSum<rccl_bfloat16> {
 template<>
 struct FuncProd<rccl_bfloat16> {
   static constexpr auto n = sizeof(PackType) / sizeof(rccl_bfloat16);
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     union converter { PackType storage; rccl_bfloat16 vec[n]; };
     static_assert(sizeof(PackType) == sizeof(converter), "PackType must be the same size of converter.");
@@ -169,7 +169,7 @@ struct FuncProd<rccl_bfloat16> {
     }
     return cr.storage;
   }
-  __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
+  inline __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
     return x * y;
   }
 };
@@ -177,7 +177,7 @@ struct FuncProd<rccl_bfloat16> {
 template<>
 struct FuncMax<rccl_bfloat16> {
   static constexpr auto n = sizeof(PackType) / sizeof(rccl_bfloat16);
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     union converter { PackType storage; rccl_bfloat16 vec[n]; };
     static_assert(sizeof(PackType) == sizeof(converter), "PackType must be the same size of converter.");
@@ -189,7 +189,7 @@ struct FuncMax<rccl_bfloat16> {
     }
     return cr.storage;
   }
-  __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
+  inline __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
     return x < y ? y : x;
   }
 };
@@ -197,7 +197,7 @@ struct FuncMax<rccl_bfloat16> {
 template<>
 struct FuncMin<rccl_bfloat16> {
   static constexpr auto n = sizeof(PackType) / sizeof(rccl_bfloat16);
-  __device__ PackType operator()(PackType x, PackType y) const
+  inline __device__ PackType operator()(PackType x, PackType y) const
   {
     union converter { PackType storage; rccl_bfloat16 vec[n]; };
     static_assert(sizeof(PackType) == sizeof(converter), "PackType must be the same size of converter.");
@@ -209,7 +209,7 @@ struct FuncMin<rccl_bfloat16> {
     }
     return cr.storage;
   }
-  __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
+  inline __device__ rccl_bfloat16 operator()(const rccl_bfloat16 x, const rccl_bfloat16 y) const {
     return x < y ? x : y;
   }
 };

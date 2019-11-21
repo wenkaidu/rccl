@@ -10,7 +10,7 @@
 #include "collectives.h"
 
 template<int UNROLL, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclReduceScatterRingKernel(struct CollectiveArgs* args) {
   const int tid = threadIdx.x;
   const int nthreads = blockDim.x;
@@ -64,11 +64,11 @@ __device__ void ncclReduceScatterRingKernel(struct CollectiveArgs* args) {
 }
 
 template<int UNROLL, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclReduceScatterTreeKernel(struct CollectiveArgs* args) { }
 
 template<int UNUSED, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclReduceScatterRingLLKernel(struct CollectiveArgs* args) {
   const int tid = threadIdx.x;
   const int bid = args->bid;
@@ -124,5 +124,5 @@ __device__ void ncclReduceScatterRingLLKernel(struct CollectiveArgs* args) {
 }
 
 template<int UNUSED, class FUNC, typename T>
-__attribute__((noinline))
+__attribute__((always_inline))
 __device__ void ncclReduceScatterTreeLLKernel(struct CollectiveArgs* args) { }
