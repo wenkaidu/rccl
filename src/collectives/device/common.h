@@ -22,7 +22,7 @@
 #define exitIfAbortBarrier(abort, abortCount) \
   if (abort) __atomic_fetch_add(abortCount, 1, __ATOMIC_SEQ_CST); \
   __syncthreads(); \
-  if (LOAD(abortCount)) { asm volatile ("s_endpgm"); return; }
+  if (LOAD(abortCount)) { /*asm volatile ("s_endpgm");*/ return; }
 #else
 static inline __device__ void exitIfAbortBarrier(int abort) {
   uint32_t popc;
