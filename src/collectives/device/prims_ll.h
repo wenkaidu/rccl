@@ -124,14 +124,12 @@ class ncclLLPrimitives {
     spins = 0;
     mismatch = 0;
 #if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
-    using Vec = uint32_t __attribute__((ext_vector_type(4)));
-    Vec i4;
+    union ncclLLFifoLine j;
     do {
-      asm volatile ("flat_load_dwordx4 %0, %1, glc\n"
-        "s_waitcnt vmcnt(0)\n"
-        "buffer_wbinvl1_vol\n" : "=v"(i4) : "v"(src));
-    } while ((i4[1] != flag) || (i4[3] != flag));
-    uint64_t val64 = (uint64_t)(i4[0]) + (((uint64_t)i4[2]) << 32);
+      j.v[0] = LOAD(src->v);
+      j.v[1] = LOAD(src->v+1);
+    } while ((j.flag1 != flag) || (j.flag2 != flag));
+    uint64_t val64 = (uint64_t)(j.data1) + (((uint64_t)j.data2) << 32);
 #else
     do {
       asm volatile("ld.volatile.global.v4.u32 {%0,%1,%2,%3}, [%4];" : "=r"(data1), "=r"(flag1), "=r"(data2), "=r"(flag2) : "l"(&src->i4));
@@ -144,15 +142,13 @@ class ncclLLPrimitives {
 
   __device__ void storeLL(union ncclLLFifoLine* dst, uint64_t val, uint32_t flag) {
 #if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
-    using Vec = uint32_t __attribute__((ext_vector_type(4)));
-    Vec i4;
-    i4[0] = val & 0xffffffff;
-    i4[1] = flag;
-    i4[2] = (val >> 32);
-    i4[3] = flag;
-    asm volatile ("flat_store_dwordx4 %0, %1, glc\n"
-      "s_waitcnt vmcnt(0)\n"
-      "buffer_wbinvl1_vol\n" : : "v"(dst), "v"(i4));
+    union ncclLLFifoLine j;
+    j.data1 = val & 0xffffffff;
+    j.flag1 = flag;
+    j.data2 = (val >> 32);
+    j.flag2 = flag;
+    STORE(dst->v, j.v[0]);
+    STORE(dst->v+1, j.v[1]);
 #else
     asm volatile("st.volatile.global.v4.u32 [%0], {%1,%2,%3,%4};" :: "l"(&dst->i4), "r"((uint32_t)val), "r"(flag), "r"((uint32_t)(val >> 32)), "r"(flag));
 #endif
@@ -181,7 +177,7 @@ class ncclLLPrimitives {
     if (SEND) waitSend(npack*sizeof(union ncclLLFifoLine));
 
     // Do multiples of 64 bits
-    #pragma unroll 1
+    #pragma unroll 2
     for (; offset<npack; offset+=nthreads) {
       // Recv : local, then intra-node, then inter-node
       uint64_t val = SRC ? readAL(srcPack+offset) : readLL(0, offset);
