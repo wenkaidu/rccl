@@ -40,6 +40,7 @@ THE SOFTWARE.
 #define COPY_UNROLL       4
 #define REDUCE_UNROLL     2
 #define DOUBLECOPY_UNROLL 2
+#define DOUBLECOPYLOCAL_UNROLL 2
 #define REDUCECOPY_UNROLL 2
 #define ALL2ALL_UNROLL    2
 
@@ -105,6 +106,7 @@ enum Ops {
   OP_COPY,
   OP_LOCALCOPY,
   OP_DOUBLECOPY,
+  OP_DOUBLECOPYLOCAL,
   OP_REDUCE,
   OP_REDUCECOPY,
   OP_READ,
@@ -134,8 +136,7 @@ __global__ void flag_sync_kernel(struct transfer_data_t* transfer_data, struct p
   }
   if (op == OP_LOCALCOPY) {
     srcs[0] = transfer_data->src0[bid];
-    //dsts[0] = transfer_data->dest1[bid];
-    dsts[0] = transfer_data->dest2[bid];
+    dsts[0] = transfer_data->dest1[bid];
     ReduceOrCopyMulti<COPY_UNROLL, FuncPassA<float>, float, 1, 1, 1, 1>(threadIdx.x, THREADS,
       1, srcs, 1, dsts, n);
   }
@@ -143,8 +144,14 @@ __global__ void flag_sync_kernel(struct transfer_data_t* transfer_data, struct p
     srcs[0] = transfer_data->src0[bid];
     dsts[0] = transfer_data->dest0[bid];
     dsts[1] = transfer_data->dest1[bid];
-    //dsts[1] = transfer_data->dest2[bid];
     ReduceOrCopyMulti<DOUBLECOPY_UNROLL, FuncPassA<float>, float, 1, 1, 1, 2>(threadIdx.x, THREADS,
+      1, srcs, 2, dsts, n);
+  }
+  if (op == OP_DOUBLECOPYLOCAL) {
+    srcs[0] = transfer_data->src0[bid];
+    dsts[0] = transfer_data->dest1[bid];
+    dsts[1] = transfer_data->dest2[bid];
+    ReduceOrCopyMulti<DOUBLECOPYLOCAL_UNROLL, FuncPassA<float>, float, 1, 1, 1, 2>(threadIdx.x, THREADS,
       1, srcs, 2, dsts, n);
   }
   if (op == OP_REDUCE) {
@@ -195,6 +202,7 @@ static flag_sync_kernel_t const flagSyncKerns[NUM_OPS+1] = {
   flag_sync_kernel<OP_COPY, 2>,
   flag_sync_kernel<OP_LOCALCOPY, 2>,
   flag_sync_kernel<OP_DOUBLECOPY, 2>,
+  flag_sync_kernel<OP_DOUBLECOPYLOCAL, 2>,
   flag_sync_kernel<OP_REDUCE, 2>,
   flag_sync_kernel<OP_REDUCECOPY, 2>,
   flag_sync_kernel<OP_READ, 2>,
@@ -371,7 +379,7 @@ static const char* link_type_name[] = {"HT", "QPI", "PCIE", "IB", "XGMI"};
 int main(int argc,char* argv[])
 {
   if (cmdOptionExists(argv, argv + argc, "-h")) {
-    printf("./rccl_prim_test -w num_workgroups -p copy|localcopy|doublecopy|reduce|reducecopy|all2all -i iterations -n bytes -r \"0 1 2 3|3 2 1 0\"\n");
+    printf("./rccl_prim_test -w num_workgroups -p copy|localcopy|doublecopy|doublecopylocal|reduce|reducecopy|all2all -i iterations -n bytes -r \"0 1 2 3|3 2 1 0\"\n");
     exit(0);
   }
 
@@ -397,7 +405,7 @@ int main(int argc,char* argv[])
   char *r = getCmdOption(argv, argv + argc, "-r");
   if (r) printf("User specified ring topology: %s\n", r);
 
-  const char *ops[] = {"copy", "localcopy", "doublecopy", "reduce", "reducecopy", "read", "all2all"};
+  const char *ops[] = {"copy", "localcopy", "doublecopy", "doublecopylocal", "reduce", "reducecopy", "read", "all2all"};
   char *prim = getCmdOption(argv, argv + argc, "-p");
   int op = NUM_OPS, begin_op, end_op;
   if (prim) {
@@ -698,6 +706,7 @@ int main(int argc,char* argv[])
     for (int j = 0; j < workgroups; j++) {
       HIPCHECK(hipFree((void*) buff[i*MAX_WORKGROUPS+j]));
       HIPCHECK(hipFree((void*) buff_coarse[i*MAX_WORKGROUPS+j]));
+      HIPCHECK(hipFree((void*) buff_fine[i*MAX_WORKGROUPS+j]));
     }
     HIPCHECK(hipFree((void*) d_profiling_data[i]));
     free(profiling_data[i]);
