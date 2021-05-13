@@ -467,6 +467,8 @@ int checkBDFFormat(char* bdf) {
   return 1;
 }
 
+RCCL_PARAM(HypervFixGpuNuma, "HYPERV_FIX_GPU_NUMA", 0);
+
 ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* xml) {
   // Fill info, then parent
   const char* busId;
@@ -537,6 +539,13 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* 
     NCCLCHECK(ncclTopoGetStrFromSys(path, "numa_node", numaIdStr));
     // Workaround kernel bug for now
     if (strcmp(numaIdStr, "-1") == 0) strcpy(numaIdStr, "0");
+
+    int device, dev = -1;
+    NCCLCHECK(xmlGetAttrInt(pciNode, "device", &device));
+    if(rcclParamHypervFixGpuNuma() == device) {
+      if (busId == NULL || hipDeviceGetByPCIBusId(&dev, busId) != hipSuccess) dev = -1;
+      if (dev != -1) snprintf(numaIdStr, MAX_STR_LEN, "%d", dev/2);
+    }
 
     // Go up one level in the PCI tree. Rewind two "/" and follow the upper PCI
     // switch, or stop if we reach a CPU root complex.
