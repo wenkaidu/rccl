@@ -209,8 +209,8 @@ ncclResult_t ncclProxySaveColl(struct ncclProxyArgs* args, int nranks) {
   int pattern = args->pattern;
   if (pattern == ncclPatternRing || pattern == ncclPatternRingTwice || pattern == ncclPatternPipelineFrom || pattern == ncclPatternPipelineTo) {
     struct ncclRing* ring = &channel->ring;
-    if (NeedProxy(proxyRecv, pattern, args->root, ring, nranks)) NCCLCHECK(SaveProxy(proxyRecv, ring->prev, args, 0));
-    if (NeedProxy(proxySend, pattern, args->root, ring, nranks)) NCCLCHECK(SaveProxy(proxySend, ring->next, args, 0));
+    if (NeedProxy(proxyRecv, pattern, args->root, ring, nranks)) NCCLCHECK(SaveProxy(proxyRecv, ring->prev, args, args->connIndex));
+    if (NeedProxy(proxySend, pattern, args->root, ring, nranks)) NCCLCHECK(SaveProxy(proxySend, ring->next, args, args->connIndex));
   }
   if (pattern == ncclPatternTreeUp || pattern == ncclPatternTreeUpDown) {
     // Tree up
@@ -287,7 +287,7 @@ ncclResult_t ncclProxySaveP2p(struct ncclComm* comm, struct ncclProxyArgs* args)
     sub->sendbytes = 0;
     sub->nsteps = DIVUP(sub->recvbytes, sub->recvChunkSize);
     if (sub->nsteps == 0) sub->nsteps = 1;
-    NCCLCHECK(SaveProxy(proxyRecv, peerrecv, args, NCCL_CONN_IDX_P2P));
+    NCCLCHECK(SaveProxy(proxyRecv, peerrecv, args, args->recvIdx));
   }
   if (sub->delta > 0 && sendbytesOrig >= ssize_t(0)) {
     int peersend = (comm->rank+sub->delta)%comm->nRanks;
@@ -295,7 +295,7 @@ ncclResult_t ncclProxySaveP2p(struct ncclComm* comm, struct ncclProxyArgs* args)
     sub->recvbytes = 0;
     sub->nsteps = DIVUP(sub->sendbytes, sub->sendChunkSize);
     if (sub->nsteps == 0) sub->nsteps = 1;
-    NCCLCHECK(SaveProxy(proxySend, peersend, args, NCCL_CONN_IDX_P2P));
+    NCCLCHECK(SaveProxy(proxySend, peersend, args, args->sendIdx));
   }
   // Reset proxy args for potentially multiple cuda graph launches
   // It is safe as long as SaveProxy copies contents of args to op

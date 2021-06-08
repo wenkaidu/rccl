@@ -377,7 +377,6 @@ static ncclResult_t commFree(ncclComm_t comm) {
     free(comm->intraCC);
   }
   NCCLCHECK(ncclCudaHostFree((void *)comm->abortFlag));
-  NCCLCHECK(ncclCudaHostFree((void *)comm->p2pNet));
 
   // Poison comm to try and catch a double free
   commPoison(comm);
@@ -430,9 +429,8 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank) {
   comm->hostDevComm.abortFlag = comm->abortFlag;
   STORE(comm->abortFlag, 0);
 
-  NCCLCHECK(ncclCudaHostCalloc((uint32_t**)&comm->p2pNet, 1));
-  comm->hostDevComm.p2pNet = comm->p2pNet;
-  STORE(comm->p2pNet, 0);
+  comm->collOpCount = 0;
+  comm->p2pOpCount = 0x8000;
 
   comm->argsptr = &comm->args;
 #ifdef ENABLE_PROFILING
@@ -464,8 +462,8 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank) {
 
   static_assert(MAXCHANNELS <= sizeof(*comm->connectSend)*8, "comm->connectSend must have enough bits for all channels");
   static_assert(MAXCHANNELS <= sizeof(*comm->connectRecv)*8, "comm->connectRecv must have enough bits for all channels");
-  NCCLCHECK(ncclCalloc(&comm->connectSend, comm->nRanks));
-  NCCLCHECK(ncclCalloc(&comm->connectRecv, comm->nRanks));
+  NCCLCHECK(ncclCalloc(&comm->connectSend, comm->nRanks*NCCL_MAX_CONNS));
+  NCCLCHECK(ncclCalloc(&comm->connectRecv, comm->nRanks*NCCL_MAX_CONNS));
 
   comm->p2pSendCount = comm->p2pRecvCount = 0;
   NCCLCHECK(ncclCalloc(&comm->p2pSends, comm->nRanks));
@@ -835,7 +833,7 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, ncclUniqueId* comm
 
   if ((comm->topo->type & RCCL_TOPO_4P2H_ROME) && (comm->topo->type & RCCL_TOPO_GDR_ALL)) {
     if (rcclParamP2pNetDisable() == 0) {
-      STORE(comm->p2pNet, 1);
+      comm->p2pNet = 1;
       INFO(NCCL_INIT, "RCCL enabled same node P2P over network");
     }
     else
@@ -1005,6 +1003,16 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, ncclUniqueId* comm
     NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, 1, &channel->ring.prev, 1, &channel->ring.next, 0), ret, affinity_restore);
   }
   NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph, 0), ret, affinity_restore);
+  if (ringGraph.nIntraChannels && rcclParamP2pNetDisable() == 0) {
+    comm->useIntraNet = 1;
+    // Connect NET for intranode use
+    for (int c=0; c<comm->nChannels; c++) {
+      struct ncclChannel* channel = comm->channels+c;
+      if (comm->nRanks == 1) continue;
+      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, 1, &channel->ring.prev, 1, &channel->ring.next, NCCL_CONN_IDX_P2P_NET), ret, affinity_restore);
+    }
+    NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph, NCCL_CONN_IDX_P2P_NET), ret, affinity_restore);
+  }
   free(rings);
   INFO(NCCL_INIT, "Connected all rings");
 
