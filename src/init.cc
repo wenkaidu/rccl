@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "graph/topo.h"
+#include <sched.h>
 
 // [RCCL]
 #include "clique/CliqueManager.h"
@@ -253,11 +254,11 @@ void *ncclCommThreadMain(void *arg) {
       uint16_t fIdx = td->funcIndex;
       #define VEGA_GPU_RTC_FREQUENCY 2.5E7
       if (type == ncclCollTraceDataType) {
-        sprintf(line, "## [%12.6f] [%02d:%02d] L:%04d DT %08x %016lx %016lx",
+        sprintf(line, "## [%012.6f] [%02d:%02d] L:%04d DT %8u %10ld %10ld",
           (double)(td->timeStamp)/VEGA_GPU_RTC_FREQUENCY, comm->rank, td->bid,
-          fIdx, td->data_0, td->opCount, td->data_1);
+          fIdx, td->data_0, (int64_t)td->opCount, (int64_t)td->data_1);
       } else {
-        sprintf(line, "## [%12.6f] [%02d:%02d] %06lx",
+        sprintf(line, "## [%012.6f] [%02d:%02d] %06lx",
           (double)(td->timeStamp)/VEGA_GPU_RTC_FREQUENCY, comm->rank, td->bid, fIdx == FUNC_INDEX_P2P ? (td->opCount + 0x100000): td->opCount);
         offset = strlen(line);
         switch (type) {
@@ -1303,7 +1304,9 @@ ncclResult_t ncclCommInitRankSync(ncclComm_t* newcomm, int nranks, ncclUniqueId 
   NCCLCHECKGOTO(initTransportsRank(*newcomm, &commId), res, cleanup);
   NCCLCHECKGOTO(devCommSetup(*newcomm), res, cleanup);
 
-  INFO(NCCL_INIT,"comm %p rank %d nranks %d cudaDev %d busId %lx used %ld bytes - Init COMPLETE", *newcomm, myrank, nranks, (*newcomm)->cudaDev, (*newcomm)->busId, allocTracker[(*newcomm)->cudaDev].totalAllocSize);
+  unsigned int cpu, node;
+  getcpu(&cpu, &node);
+  INFO(NCCL_INIT,"comm %p rank %d nranks %d cudaDev %d busId %lx used %ld bytes cpu %d node %d - Init COMPLETE", *newcomm, myrank, nranks, (*newcomm)->cudaDev, (*newcomm)->busId, allocTracker[(*newcomm)->cudaDev].totalAllocSize, cpu, node);
 
   return ncclSuccess;
 cleanup:

@@ -33,6 +33,7 @@ class Primitives<
   int flags;
   int group;
   uint64_t step;
+  uint64_t stepBegin;
   union {
     void **connPtrsFifoPtr; // (flags & PtrsFifoEnabled)
     T *userBuff;            // (flags & (RoleInput|RoleOutput))
@@ -102,7 +103,6 @@ class Primitives<
       }
       __asm__ __volatile__("s_wakeup");
     }
-
     if (flags & (Recv*RoleWaitRecv | Send*RoleWaitSend)) {
       if (isSendNotRecv && (flags & SizesFifoEnabled))
         STORE(connSizesFifoPtr+step%NCCL_STEPS, nelts*sizeof(T));
@@ -206,6 +206,8 @@ class Primitives<
 #ifdef ENABLE_PROFILING
         if (tid == 0 && opCount) ncclShmem->comm.devProf->elems[blockIdx.x].wait_cycle += (__builtin_amdgcn_s_memrealtime() - t0);
 #endif
+        uint64_t t0;
+        if (opCount && tid == 0) t0 = __builtin_amdgcn_s_memrealtime();
         if (DirectRecv && ncclShmem->groups[group].srcs[0] == ncclShmem->groups[group].dsts[0]) {
           // We can only have one direct receive. Since srcs[0] == dstPtr+offset, skip one copy
           if (Send) {
@@ -233,6 +235,12 @@ class Primitives<
              sliceSize);
         }
         barrier(); // This barrier has a counterpart in following loop
+        if (opCount && tid == 0) {
+          uint64_t dt = __builtin_amdgcn_s_memrealtime()-t0;
+          if (dt > 40000) {
+            traceData(opCount, step, step-stepBegin, dt);
+          }
+        }
         //if (Send && (flags & RolePostSend) && index == 0) __threadfence_system();
         __syncwarp();
         postPeer<Recv, Send>();
@@ -340,6 +348,7 @@ class Primitives<
         ncclShmem->groups[group].recvConns[index] = conn; // WaitRecv role saves since that's who needs it in setDataPtrs()
         connStepPtr = conn->tail;
         connStepCache = LOAD(connStepPtr);
+        stepBegin = connStepCache;
         flags |= (conn->ptrsFifo != nullptr) ? PtrsFifoEnabled : 0;
         if (Direct) {
           // User buffers have been registered
