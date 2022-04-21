@@ -19,7 +19,7 @@
 
 #define NCCL_FUNC5(func, algo, devredop, type, nullify) \
   MACRO_IF(nullify, nullptr, NCCL_FUNC_NAME(func, algo, LL,     devredop, type)), \
-  MACRO_IF(nullify, nullptr, NCCL_FUNC_NAME(func, algo, LL,  devredop, type)), \
+  MACRO_IF(nullify, nullptr, NCCL_FUNC_NAME(func, algo, LL128,  devredop, type)), \
   MACRO_IF(nullify, nullptr, NCCL_FUNC_NAME(func, algo, SIMPLE, devredop, type))
 
 #define NCCL_FUNC4(func, devredop, type, nullify) \
@@ -131,39 +131,43 @@ void NCCL_CALL_FUNCTIONS(unsigned short funcIndex) noexcept {
   else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_RING, NCCL_PROTO_LL))
     ncclFunction_AllReduce_RING_LL_Sum_float();
   else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_RING, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_RING_LL_Sum_float();
+    ncclFunction_AllReduce_RING_LL128_Sum_float();
   else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_SIMPLE))
     ncclFunction_AllReduce_TREE_SIMPLE_Sum_float();
   else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL))
     ncclFunction_AllReduce_TREE_LL_Sum_float();
+  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL128))
+    ncclFunction_AllReduce_TREE_LL128_Sum_float();
   else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET, NCCL_PROTO_SIMPLE))
     ncclFunction_AllReduce_COLLNET_SIMPLE_Sum_float();
   else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET, NCCL_PROTO_LL))
     ncclFunction_AllReduce_COLLNET_LL_Sum_float();
+  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET, NCCL_PROTO_LL128))
+    ncclFunction_AllReduce_COLLNET_LL128_Sum_float();
   else
     assert("Unsupported function index");
 #else
   if (funcIndex < 540) {
     if (funcIndex % 9 == 0) ncclFunction_Broadcast_TREE_LL_Sum_int8_t();
-    else if (funcIndex % 9 == 1) ncclFunction_Broadcast_TREE_LL_Sum_int8_t();
+    else if (funcIndex % 9 == 1) ncclFunction_Broadcast_TREE_LL128_Sum_int8_t();
     else if (funcIndex % 9 == 2) ncclFunction_Broadcast_TREE_SIMPLE_Sum_int8_t();
     else if (funcIndex % 9 == 3) ncclFunction_Broadcast_RING_LL_Sum_int8_t();
-    else if (funcIndex % 9 == 4) ncclFunction_Broadcast_RING_LL_Sum_int8_t();
+    else if (funcIndex % 9 == 4) ncclFunction_Broadcast_RING_LL128_Sum_int8_t();
     else if (funcIndex % 9 == 5) ncclFunction_Broadcast_RING_SIMPLE_Sum_int8_t();
     else if (funcIndex % 9 == 6) ncclFunction_Broadcast_COLLNET_LL_Sum_int8_t();
-    else if (funcIndex % 9 == 7) ncclFunction_Broadcast_COLLNET_LL_Sum_int8_t();
+    else if (funcIndex % 9 == 7) ncclFunction_Broadcast_COLLNET_LL128_Sum_int8_t();
     else ncclFunction_Broadcast_COLLNET_SIMPLE_Sum_int8_t();
   }
   else if (funcIndex < 1080) Caller<540, 1080>::call(funcIndex);
   else if (funcIndex < 1620) {
     if (funcIndex % 9 == 0) ncclFunction_AllGather_TREE_LL_Sum_int8_t();
-    else if (funcIndex % 9 == 1) ncclFunction_AllGather_TREE_LL_Sum_int8_t();
+    else if (funcIndex % 9 == 1) ncclFunction_AllGather_TREE_LL128_Sum_int8_t();
     else if (funcIndex % 9 == 2) ncclFunction_AllGather_TREE_SIMPLE_Sum_int8_t();
     else if (funcIndex % 9 == 3) ncclFunction_AllGather_RING_LL_Sum_int8_t();
-    else if (funcIndex % 9 == 4) ncclFunction_AllGather_RING_LL_Sum_int8_t();
+    else if (funcIndex % 9 == 4) ncclFunction_AllGather_RING_LL128_Sum_int8_t();
     else if (funcIndex % 9 == 5) ncclFunction_AllGather_RING_SIMPLE_Sum_int8_t();
     else if (funcIndex % 9 == 6) ncclFunction_AllGather_COLLNET_LL_Sum_int8_t();
-    else if (funcIndex % 9 == 7) ncclFunction_AllGather_COLLNET_LL_Sum_int8_t();
+    else if (funcIndex % 9 == 7) ncclFunction_AllGather_COLLNET_LL128_Sum_int8_t();
     else ncclFunction_AllGather_COLLNET_SIMPLE_Sum_int8_t();
   }
   else if (funcIndex < 2700) Caller<1620, 2700>::call(funcIndex);
@@ -264,7 +268,7 @@ class ncclFunction {
   }
 //  traceData(int16_t data2, uint32_t data4, uint64_t data8_0, uint64_t data8_1)
 #define traceData(data2, data4, data8_0, data8_1) { \
-    uint32_t pos = __atomic_fetch_add(ncclShmem->comm.collTraceTail, 1, __ATOMIC_SEQ_CST)%COLLTRACE_NUM_ITEMS; \
+    uint32_t pos = atomicAdd(ncclShmem->comm.collTraceTail, 1)%COLLTRACE_NUM_ITEMS; \
     ncclShmem->comm.collTrace[pos].bid = blockIdx.x; \
     ncclShmem->comm.collTrace[pos].timeStamp = __builtin_amdgcn_s_memrealtime(); \
     ncclShmem->comm.collTrace[pos].funcIndex = data2; \
@@ -373,16 +377,15 @@ struct ncclShmemGroup {
 
 struct ncclShmemData {
   union {
-    uint64_t ll128warp[NCCL_MAX_GROUPS][NCCL_MAX_GROUPS];
     struct ncclShmemGroup groups[NCCL_MAX_GROUPS];
   };
-  uint32_t sync[NCCL_MAX_GROUPS];
   uint64_t redOpArgs[NCCL_MAX_DIRECT_ARITY+1];
   struct ncclDevComm comm;
   struct ncclChannel channel;
-  uint64_t pad;
+  uint64_t pad[2];
   struct ncclWork work;
 };
+static_assert(offsetof(struct ncclShmemData, work)%16 == 0, "shmem.work needs to be 16B aligned");
 
 static __device__ void ncclRedopPtrDeref(struct ncclWorkElem* we) {
   if (we->header.type != ncclWorkTypeUnused && we->redOpArgIsPtr) {
@@ -509,6 +512,7 @@ __device__  __attribute__((noinline)) void NCCL_FUNC_NAME(func, algo, proto, dev
 // Only generate inline kernels for LL
 #define IMPL_COLL4(func, algo, devredop, type, ncclType) \
   IMPL_COLL_FUNC(func, algo, LL,     devredop, type) \
+  IMPL_COLL_FUNC(func, algo, LL128,  devredop, type) \
   IMPL_COLL_FUNC(func, algo, SIMPLE, devredop, type) \
 
 #define IMPL_COLL3(func, devredop, type, ncclType) \
