@@ -26,11 +26,11 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   const int group;
   Fan fan;
   T *userBufs[2];
-  struct ncclConnInfo* recvConn = NULL;
+  //struct ncclConnInfo* recvConn = NULL;
   volatile uint64_t* recvConnHeadPtr = NULL;
   uint64_t recvConnHead;
 
-  struct ncclConnInfo* sendConn = NULL;
+  //struct ncclConnInfo* sendConn = NULL;
   volatile int* sendConnFifoPtr = NULL;
   volatile uint64_t* sendConnTailPtr = NULL;
   uint64_t sendConnTail;
@@ -59,7 +59,6 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   }
 
   uint32_t abort = 0;
-  uint32_t* sync;
 
   inline __device__ int checkAbort(int &spins, int i, int send) {
     spins++;
@@ -357,31 +356,31 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   __device__ __forceinline__ void loadRecvConn(struct ncclConnInfo* conn, int i) {
     recvBuff[i] = (uint64_t*)conn->buffs[NCCL_PROTO_LL128];
     recvStep[i] = conn->step;
-    if (wid == i) recvConn = conn;
+    if (wid == i) ncclShmem->recvConn[warp][i] = conn;
   }
   __device__ __forceinline__ void loadRecvSync() {
     if (tid >= nthreads-WARP_SIZE && wid < fan.nrecv()) {
-      recvConnHeadPtr = recvConn->head;
-      recvConnHead = recvConn->step;
+      recvConnHeadPtr = ncclShmem->recvConn[warp][wid]->head;
+      recvConnHead = ncclShmem->recvConn[warp][wid]->step;
     }
   }
 
   __device__ __forceinline__ void loadSendConn(struct ncclConnInfo* conn, int i) {
     sendBuff[i] = (uint64_t*)conn->buffs[NCCL_PROTO_LL128];
     sendStep[i] = conn->step;
-    if (wid == i) sendConn = conn;
+    if (wid == i) ncclShmem->sendConn[warp][i] = conn;
   }
   __device__ __forceinline__ void loadSendSync() {
     if (tid < fan.nsend()) {
-      sendConnHeadPtr = sendConn->head;
+      sendConnHeadPtr = ncclShmem->sendConn[warp][wid]->head;
       sendConnHeadCache = *sendConnHeadPtr;
-      sendConnHead = sendConn->step;
-      sendConnFifoPtr = sendConn->sizesFifo;
+      sendConnHead = ncclShmem->sendConn[warp][wid]->step;
+      sendConnFifoPtr = ncclShmem->sendConn[warp][wid]->sizesFifo;
     }
     if (tid >= nthreads-WARP_SIZE && wid<fan.nsend()) {
-      if (sendConn->sizesFifo) {
-        sendConnTailPtr = sendConn->tail;
-        sendConnTail = sendConn->step;
+      if (ncclShmem->sendConn[warp][wid]->sizesFifo) {
+        sendConnTailPtr = ncclShmem->sendConn[warp][wid]->tail;
+        sendConnTail = ncclShmem->sendConn[warp][wid]->step;
       }
     }
   }
@@ -415,9 +414,9 @@ public:
   __device__ ~Primitives() {
     // Save steps for the next operation
     if (tid >= nthreads-WARP_SIZE && wid < fan.nrecv())
-      recvConn->step = recvConnHead;
+      ncclShmem->recvConn[warp][wid]->step = recvConnHead;
     if (tid < fan.nsend())
-      sendConn->step = sendConnHead;
+      ncclShmem->sendConn[warp][wid]->step = sendConnHead;
     // Ensure all steps written back
     barrier();
   }

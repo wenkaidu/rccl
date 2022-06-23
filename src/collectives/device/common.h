@@ -378,6 +378,10 @@ struct ncclShmemGroup {
 struct ncclShmemData {
   union {
     struct ncclShmemGroup groups[NCCL_MAX_GROUPS];
+    struct {
+      struct ncclConnInfo* sendConn[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
+      struct ncclConnInfo* recvConn[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
+    };
   };
   uint64_t redOpArgs[NCCL_MAX_DIRECT_ARITY+1];
   struct ncclDevComm comm;
