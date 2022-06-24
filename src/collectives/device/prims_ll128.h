@@ -27,14 +27,14 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   Fan fan;
   T *userBufs[2];
   //struct ncclConnInfo* recvConn = NULL;
-  volatile uint64_t* recvConnHeadPtr = NULL;
+  //volatile uint64_t*recvConnHeadPtr = NULL;
   uint64_t recvConnHead;
 
   //struct ncclConnInfo* sendConn = NULL;
-  volatile int* sendConnFifoPtr = NULL;
-  volatile uint64_t* sendConnTailPtr = NULL;
+  //volatile int* sendConnFifoPtr = NULL;
+  //volatile uint64_t* sendConnTailPtr = NULL;
   uint64_t sendConnTail;
-  volatile uint64_t* sendConnHeadPtr = NULL;
+  //volatile uint64_t* sendConnHeadPtr = NULL;
   uint64_t sendConnHead;
   uint64_t sendConnHeadCache; // Cache last seen value
 
@@ -70,26 +70,26 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   }
 
   inline __device__ void waitSend(int nbytes) {
-    if (sendConnHeadPtr) {
+    if (tid < fan.nsend() && ncclShmem->sendConnHeadPtr[warp][wid]) {
       int spins = 0;
       while (sendConnHeadCache + NCCL_STEPS < sendConnHead + 1) {
         __builtin_amdgcn_s_sleep(8);
-        sendConnHeadCache = LOAD(sendConnHeadPtr);
+        sendConnHeadCache = atomicAdd_system((unsigned long long *)ncclShmem->sendConnHeadPtr[warp][wid], 0);
         if (checkAbort(spins, wid, 1)) break;
       }
       __asm__ __volatile__("s_wakeup");
-      if (sendConnFifoPtr) {
-        STORE(sendConnFifoPtr+sendStep[wid]%NCCL_STEPS, nbytes);
+      if (tid < fan.nsend() && ncclShmem->sendConnFifoPtr[warp][wid]) {
+        STORE(ncclShmem->sendConnFifoPtr[warp][wid]+sendStep[wid]%NCCL_STEPS, nbytes);
       }
       sendConnHead += 1;
     }
   }
 
   inline __device__ void postRecv() {
-    if (recvConnHeadPtr) atomicExch_system((unsigned long long *)recvConnHeadPtr, recvConnHead += 1);
+    if (tid >= nthreads-WARP_SIZE && wid<fan.nrecv() && ncclShmem->recvConnHeadPtr[warp][wid]) atomicExch_system((unsigned long long *)ncclShmem->recvConnHeadPtr[warp][wid], recvConnHead += 1);
   }
   inline __device__ void postSend() {
-    if (sendConnTailPtr) { __threadfence(); atomicExch_system((unsigned long long *)sendConnTailPtr, sendConnTail += 1); }
+    if (tid >= nthreads-WARP_SIZE && wid<fan.nsend() && ncclShmem->sendConn[warp][wid]->sizesFifo && ncclShmem->sendConnTailPtr[warp][wid]) { __threadfence(); atomicExch_system((unsigned long long *)ncclShmem->sendConnTailPtr[warp][wid], sendConnTail += 1); }
   }
 
   template<int WordPerThread>
@@ -360,7 +360,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   }
   __device__ __forceinline__ void loadRecvSync() {
     if (tid >= nthreads-WARP_SIZE && wid < fan.nrecv()) {
-      recvConnHeadPtr = ncclShmem->recvConn[warp][wid]->head;
+      ncclShmem->recvConnHeadPtr[warp][wid] = ncclShmem->recvConn[warp][wid]->head;
       recvConnHead = ncclShmem->recvConn[warp][wid]->step;
     }
   }
@@ -372,14 +372,14 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL128, P2p>:
   }
   __device__ __forceinline__ void loadSendSync() {
     if (tid < fan.nsend()) {
-      sendConnHeadPtr = ncclShmem->sendConn[warp][wid]->head;
-      sendConnHeadCache = *sendConnHeadPtr;
+      ncclShmem->sendConnHeadPtr[warp][wid] = ncclShmem->sendConn[warp][wid]->head;
+      sendConnHeadCache = LOAD(ncclShmem->sendConnHeadPtr[warp][wid]);
       sendConnHead = ncclShmem->sendConn[warp][wid]->step;
-      sendConnFifoPtr = ncclShmem->sendConn[warp][wid]->sizesFifo;
+      ncclShmem->sendConnFifoPtr[warp][wid] = ncclShmem->sendConn[warp][wid]->sizesFifo;
     }
     if (tid >= nthreads-WARP_SIZE && wid<fan.nsend()) {
       if (ncclShmem->sendConn[warp][wid]->sizesFifo) {
-        sendConnTailPtr = ncclShmem->sendConn[warp][wid]->tail;
+        ncclShmem->sendConnTailPtr[warp][wid] = ncclShmem->sendConn[warp][wid]->tail;
         sendConnTail = ncclShmem->sendConn[warp][wid]->step;
       }
     }

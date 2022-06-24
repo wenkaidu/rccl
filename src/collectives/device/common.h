@@ -381,6 +381,10 @@ struct ncclShmemData {
     struct {
       struct ncclConnInfo* sendConn[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
       struct ncclConnInfo* recvConn[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
+      volatile uint64_t* sendConnTailPtr[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
+      volatile uint64_t* recvConnHeadPtr[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
+      volatile uint64_t* sendConnHeadPtr[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
+      volatile int* sendConnFifoPtr[NCCL_MAX_GROUPS][NCCL_MAX_DEV_ARITY];
     };
   };
   uint64_t redOpArgs[NCCL_MAX_DIRECT_ARITY+1];
