@@ -83,9 +83,9 @@ static ncclResult_t ncclCudaCallocDebug(const char *filefunc, int line, T** ptr,
   hipStream_t stream;
   CUDACHECK(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
 #endif
-  if (isFineGrain)
-    CUDACHECK(hipExtMallocWithFlags((void**)ptr, nelem*sizeof(T), hipDeviceMallocFinegrained));
-  else
+  //if (isFineGrain)
+    //CUDACHECK(hipExtMallocWithFlags((void**)ptr, nelem*sizeof(T), hipDeviceMallocFinegrained));
+  //else
     CUDACHECK(hipMalloc(ptr, nelem*sizeof(T)));
 #if CUDART_VERSION >= 11030
   CUDACHECK(hipMemsetAsync(*ptr, 0, nelem*sizeof(T), stream));

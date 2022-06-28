@@ -107,7 +107,7 @@ private:
       int spins = 0;
       while (connStepCache + (isSendNotRecv ? NCCL_STEPS : 0) < step + StepPerSlice) {
         __builtin_amdgcn_s_sleep(8);
-        connStepCache = atomicAdd_system((unsigned long long *)connStepPtr, 0);
+        connStepCache = __builtin_nontemporal_load(connStepPtr);
         if (checkAbort(spins)) break;
         //if (spins == 0) printf("r=%d b=%d t=%d SPUN OUT got=%d want=%d\n", ncclShmem->comm.rank, blockIdx.x, threadIdx.x, int(connStepCache + (isSendNotRecv ? NCCL_STEPS : 0)), int(step+StepPerSlice));
         if (spins == 0) traceData(__LINE__, threadIdx.x, int(connStepCache + (isSendNotRecv ? NCCL_STEPS : 0)), int(step+StepPerSlice));
@@ -117,7 +117,7 @@ private:
 
     if (flags & (Recv*RoleWaitRecv | Send*RoleWaitSend)) {
       if (isSendNotRecv && (flags & SizesFifoEnabled))
-        STORE(connSizesFifoPtr+step%NCCL_STEPS, nelts*sizeof(T));
+        __builtin_nontemporal_store(nelts*sizeof(T), connSizesFifoPtr+step%NCCL_STEPS);
 
       void **ptrs = isSendNotRecv ? (ncclShmem->groups[group].dsts + Dst)
                                   : (ncclShmem->groups[group].srcs + Src);
@@ -330,9 +330,9 @@ private:
 
         }
         barrier(); // This barrier has a counterpart in following loop
-#if defined(__gfx1030__)
+//#if defined(__gfx1030__)
 	if (Send && (flags & RolePostSend) && index == 0) __threadfence_system();
-#endif
+//#endif
 	__syncwarp();
         postPeer<Recv, Send>();
         offset += sliceSize;
@@ -352,9 +352,9 @@ private:
         waitPeer<DirectRecv, DirectSend, Recv, Send, Src, Dst>(0, 0, 0, 0);
       }
       barrier(); // Has couterpart in preceding worker-only loop.
-#if defined(__gfx1030__)
+//#if defined(__gfx1030__)
       if (Send && (flags & RolePostSend) && sliceSize > 0 && index == 0) __threadfence_system();
-#endif
+//#endif
       __syncwarp();
       postPeer<Recv, Send>();
       offset += sliceSize;
@@ -485,7 +485,7 @@ private:
       if (flags & RoleWaitSend) {
         ncclShmem->groups[group].sendConns[index] = conn; // WaitSend role saves since that's who needs it in setDataPtrs()
         connStepPtr = conn->head;
-        connStepCache = LOAD(connStepPtr);
+        connStepCache = __builtin_nontemporal_load(connStepPtr);
         flags |= (conn->offsFifo != nullptr) ? OffsFifoEnabled : 0;
         if (flags & OffsFifoEnabled)
           connOffsFifoPtr = conn->offsFifo;
@@ -598,7 +598,7 @@ private:
       int spins = 0;
       void *volatile *slot = ncclShmem->groups[group].recvConns[index]->ptrExchange;
       // Wait for consumer to consume previous value before trampling it.
-      while (LOAD(slot) != nullptr && !checkAbort(spins));
+      while (__builtin_nontemporal_load(slot) != nullptr && !checkAbort(spins));
       directBuff = (T*)outputBuf;
       // Encode pointer by XOR'ing against some address they definitely wouldn't send
       // since we want to allow them sending us nullptr while not colliding with
@@ -610,7 +610,7 @@ private:
       void *volatile *slot = ncclShmem->groups[group].sendConns[index]->ptrExchange;
       void *ptr;
       while (true) {
-        ptr = LOAD(slot);
+        ptr = __builtin_nontemporal_load(slot);
         if (ptr != nullptr || checkAbort(spins)) break;
       }
       directBuff = regUsed ? (T*)(e->dnOutputs[index]) :
