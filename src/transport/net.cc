@@ -809,6 +809,9 @@ static ncclResult_t sendProxyProgress(struct ncclComm* comm, struct ncclProxyArg
       // Round to next multiple of sliceSteps
       sub->base = ROUNDUP(resources->step, args->chunkSteps);
       sub->posted = sub->transmitted = sub->done = 0;
+#ifdef ENABLE_TIMEOUT
+      comm->channels[sub->channelId].active_send = 0;
+#endif
       for (uint64_t step=0; step<sub->nsteps; step++) ncclProfilingRecord(args, s, step, ncclProxyProfileBegin);
     }
     args->state = ncclProxyOpProgress;
@@ -894,6 +897,12 @@ static ncclResult_t sendProxyProgress(struct ncclComm* comm, struct ncclProxyArg
             // Data is ready, try to send.
             NCCLCHECK(ncclNetIsend(resources->netSendComm, buff, size, resources->rank, mhandle, sub->requests+buffSlot));
             if (sub->requests[buffSlot] != NULL) {
+#ifdef ENABLE_TIMEOUT
+              if (comm->channels[sub->channelId].active_send == 0) {
+                gettimeofday(&comm->channels[sub->channelId].tvs, NULL);
+              }
+              comm->channels[sub->channelId].active_send ++;
+#endif
 
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_NET_SEND_ENTRY) && defined(ENABLE_NPKIT_EVENT_NET_SEND_EXIT)
               NpKit::CollectCpuEvent(
@@ -928,6 +937,9 @@ static ncclResult_t sendProxyProgress(struct ncclComm* comm, struct ncclProxyArg
         int buffSlot = (sub->base+sub->done)%NCCL_STEPS;
         NCCLCHECK(ncclNetTest(sub->requests[buffSlot], &done, NULL));
         if (done) {
+#ifdef ENABLE_TIMEOUT
+          comm->channels[sub->channelId].active_send --;
+#endif
 
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_NET_SEND_ENTRY) && defined(ENABLE_NPKIT_EVENT_NET_SEND_EXIT)
           NpKit::CollectCpuEvent(
@@ -961,6 +973,21 @@ static ncclResult_t sendProxyProgress(struct ncclComm* comm, struct ncclProxyArg
         }
       }
     }
+#ifdef ENABLE_TIMEOUT
+    for (int s=0; s<args->nsubs; s++) {
+      struct ncclProxySubArgs* sub = args->subs+s;
+      if (comm->channels[sub->channelId].active_send) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        float delta = (tv.tv_sec - comm->channels[sub->channelId].tvs.tv_sec)*1E6 + tv.tv_usec - comm->channels[sub->channelId].tvs.tv_usec;
+        static float prev_delta = 0;
+        if (delta - prev_delta > 1E6) {
+          WARN("Network proxy timeout after %f us chan %d active_send %d sub %d done %lx transmitted %lx", delta, sub->channelId, comm->channels[sub->channelId].active_send, s, sub->done, sub->transmitted);
+          prev_delta = delta;
+        }
+      }
+    }
+#endif
     if (args->done == args->nsubs) {
       args->state = ncclProxyOpNone;
     }
@@ -1005,6 +1032,9 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
       // Round to next multiple of sliceSteps
       sub->base = ROUNDUP(resources->step, args->chunkSteps);
       sub->posted = sub->received = sub->transmitted = sub->done = 0;
+#ifdef ENABLE_TIMEOUT
+      comm->channels[sub->channelId].active_recv = 0;
+#endif
       for (int i=0; i<groupSize; i++) sub[-i].groupSize = groupSize;
       for (uint64_t step=0; step<sub->nsteps; step++) ncclProfilingRecord(args, s, step, ncclProxyProfileBegin);
     }
@@ -1055,6 +1085,12 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
         if (*requestPtr) {
           for (int i=0; i<subGroup->groupSize; i++) {
             struct ncclProxySubArgs* sub = subGroup+i;
+#ifdef ENABLE_TIMEOUT
+            if (comm->channels[sub->channelId].active_recv == 0) {
+              gettimeofday(&comm->channels[sub->channelId].tvs, NULL);
+            }
+            comm->channels[sub->channelId].active_recv ++;
+#endif
 
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_NET_RECV_ENTRY) && defined(ENABLE_NPKIT_EVENT_NET_RECV_EXIT)
             NpKit::CollectCpuEvent(
@@ -1096,6 +1132,9 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
           for (int i=0; i<NCCL_PROXY_MAX_SUBS; i++) totalSize += sizes[i];
           for (int i=0; i<subGroup->groupSize; i++) {
             struct ncclProxySubArgs* sub = subGroup + i;
+#ifdef ENABLE_TIMEOUT
+            comm->channels[sub->channelId].active_recv --;
+#endif
 
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_NET_RECV_ENTRY) && defined(ENABLE_NPKIT_EVENT_NET_RECV_EXIT)
             NpKit::CollectCpuEvent(
@@ -1153,6 +1192,21 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
         }
       }
     }
+#ifdef ENABLE_TIMEOUT
+    for (int s=0; s<args->nsubs; s++) {
+      struct ncclProxySubArgs* sub = args->subs+s;
+      if (comm->channels[sub->channelId].active_recv) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        float delta = (tv.tv_sec - comm->channels[sub->channelId].tvs.tv_sec)*1E6 + tv.tv_usec - comm->channels[sub->channelId].tvs.tv_usec;
+        static float prev_delta = 0;
+        if (delta - prev_delta > 1E6) {
+          WARN("Network proxy timeout after %f us active_recv %d ", delta, comm->channels[sub->channelId].active_recv);
+          prev_delta = delta;
+        }
+      }
+    }
+#endif
     if (args->idle == 0) return ncclSuccess;
 
     for (int s=0; s<args->nsubs; s+=args->subs[s].groupSize) {

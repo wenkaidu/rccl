@@ -272,6 +272,8 @@ struct ncclWork {
 
 static_assert(sizeof(struct ncclWork) == NCCL_WORK_SIZE, "ncclWork size needs to be well aligned");
 
+#define ENABLE_TIMEOUT
+
 struct ncclChannel {
   union {
     struct {
@@ -299,6 +301,11 @@ struct ncclChannel {
       uint64_t recv_byte;
       float bw_cumulative;
       int bw_count;
+#endif
+#ifdef ENABLE_TIMEOUT
+      struct timeval tvs;
+      int active_send;
+      int active_recv;
 #endif
       uint16_t index;        // Only used by GPU
 
