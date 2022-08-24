@@ -291,12 +291,6 @@ class ncclFunction {
 #define __insert_timestamp(line_num)
 #endif
 
-__device__ inline bool barrierReduceAny(int bit, uint32_t* abortCount) {
-  if (bit) atomicAdd(abortCount, 1); \
-  __syncthreads(); \
-  return atomicAdd(abortCount, 0) != 0;
-}
-
 // Copy src to dst and fill extra size with zeroes
 template<typename Tdst, typename Tsrc>
 __device__ void copyToShmem(Tdst *dst, Tsrc const *src, int tid, int nthreads) {
@@ -423,15 +417,13 @@ static __device__ void ncclRedopPtrDeref(struct ncclWorkElem* we) {
 extern __device__ struct ncclShmemData *ncclShmem;
 
 template<ncclFunc_t Fn, typename T, typename RedOp, int Algo, int Proto, int FnIndex, bool COLLTRACE>
-__device__ void ncclKernel(struct ncclDevComm* comm, ncclWorkElem first)  {
+__device__ void ncclKernel(struct ncclDevComm* comm)  {
   int tid = threadIdx.x;
   int nthreads = blockDim.x;
   int bid = blockIdx.x;
   __shared__ struct ncclShmemData shmem;
   ncclShmem = &shmem;
-  __shared__ uint32_t abortCount;
   if (tid == 0) {
-    abortCount = 0;
     for (auto i = 0; i < NCCL_MAX_GROUPS; i++) {
       shmem.groups[i].barrier = 0;
       for (auto j = 0; j < NCCL_MAX_GROUPS; j++) shmem.groups[i].barrier_next[j] = 0;
@@ -451,11 +443,6 @@ __device__ void ncclKernel(struct ncclDevComm* comm, ncclWorkElem first)  {
   ncclChannel *channel = &((ncclDevCommAndChannels*)comm)->channels[bid];
   turn = copyToShmem(&ncclShmem->channel, channel, turn);
 
-  // To optimize for latency, (only) the first operation is passed as argument.
-  if (bid == 0 && first.header.type != ncclWorkTypeUnused) {
-    // Copy first elem to work and zero out the rest
-    copyToShmem(&ncclShmem->work, &first, tid, nthreads);
-  }
   __syncthreads(); // publish ncclShmem
   if (tid == 0) __insert_timestamp(__LINE__);
   if (tid == 0) __insert_timestamp(__LINE__);
@@ -464,23 +451,19 @@ __device__ void ncclKernel(struct ncclDevComm* comm, ncclWorkElem first)  {
   ncclWork *workFifoDev = ncclShmem->channel.workFifoDev;
   int workFifoIx = ncclShmem->channel.index;
 
-  bool skipLoadWork = false, firstLaunch = true;
-  if (bid == 0 && first.header.type != ncclWorkTypeUnused)
-    skipLoadWork = true;
+  bool firstLaunch = true;
 
   while (true) {
-    if (!skipLoadWork) {
-      copyToShmem(&ncclShmem->work, &workFifoDev[workFifoIx], tid, nthreads);
-      if (tid == 0) __insert_timestamp(__LINE__);
-      { // Check whether the last operation was aborted and make sure all threads exit
-        int aborted = tid == 0 ? *comm->abortFlag : 0;
-        if (barrierReduceAny(aborted, &abortCount)) { // publish ncclShmem->work
-          if (COLLTRACE && tid == 0) traceAbort();
-          break;
-        }
-        if (tid == 0)
-          workFifoHost[workFifoIx].header.type = ncclWorkTypeUnused;
+    copyToShmem(&ncclShmem->work, &workFifoDev[workFifoIx], tid, nthreads);
+    if (tid == 0) __insert_timestamp(__LINE__);
+    { // Check whether the last operation was aborted and make sure all threads exit
+      int aborted = tid == 0 ? *comm->abortFlag : 0;
+      if (__any(aborted)) { // publish ncclShmem->work
+        if (COLLTRACE && tid == 0) traceAbort();
+        break;
       }
+      if (tid == 0)
+        workFifoHost[workFifoIx].header.type = ncclWorkTypeUnused;
     }
     if (tid == 0) __insert_timestamp(__LINE__);
 
@@ -505,18 +488,22 @@ __device__ void ncclKernel(struct ncclDevComm* comm, ncclWorkElem first)  {
       }
     }
     if (tid == 0) __insert_timestamp(__LINE__);
-    if (ncclShmem->work.header.funcIndex == FnIndex)
+    if (ncclShmem->work.header.funcIndex == FUNC_INDEX_ALLREDUCE_SUM_F32_TREE_LL)
+      ncclFunction_AllReduce_TREE_LL_Sum_float();
+    else if (ncclShmem->work.header.funcIndex == FUNC_INDEX_ALLREDUCE_SUM_F16_TREE_LL)
+      ncclFunction_AllReduce_TREE_LL_Sum_half();
+    else if (ncclShmem->work.header.funcIndex == FnIndex)
       RunWork<Fn, T, RedOp, Algo, Proto>().run(&ncclShmem->work);
     else
       NCCL_CALL_FUNCTIONS(ncclShmem->work.header.funcIndex);
 
     if (ncclShmem->work.header.isLast) break;
     __syncthreads();
-    skipLoadWork = false;
   }
   if (COLLTRACE && tid == 0) traceKernelEnd()
 #ifdef ENABLE_PROFILING
   if (ncclShmem->comm.devProf->seq < PROFILE_NUM_LAUNCHES) {
+    __syncthreads();
     copyToShmem(ncclShmem->comm.devProf+MAXCHANNELS*ncclShmem->prof.seq+blockIdx.x, &ncclShmem->prof);
     if (tid == 0) ncclShmem->comm.devProf[bid].seq++;
   }
@@ -525,11 +512,11 @@ __device__ void ncclKernel(struct ncclDevComm* comm, ncclWorkElem first)  {
 
 #define IMPL_COLL_KERN(func, algo, proto, devredop, type, fIndex) \
 __launch_bounds__(NCCL_MAX_NTHREADS, 1) \
-__global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm, ncclWorkElem first) { \
+__global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm) { \
   if (comm->collTraceThread) \
-    ncclKernel<ncclFunc##func, type, Func##devredop<type>, NCCL_ALGO_##algo, NCCL_PROTO_##proto, fIndex, true>(comm, first); \
+    ncclKernel<ncclFunc##func, type, Func##devredop<type>, NCCL_ALGO_##algo, NCCL_PROTO_##proto, fIndex, true>(comm); \
   else \
-    ncclKernel<ncclFunc##func, type, Func##devredop<type>, NCCL_ALGO_##algo, NCCL_PROTO_##proto, fIndex, false>(comm, first); \
+    ncclKernel<ncclFunc##func, type, Func##devredop<type>, NCCL_ALGO_##algo, NCCL_PROTO_##proto, fIndex, false>(comm); \
 }
 
 // Examples :     AllReduce, RING, LL,    Sum,   uint8

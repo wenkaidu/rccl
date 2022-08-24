@@ -23,6 +23,9 @@ struct ncclDevRedOpFull {
 #define FUNC_INDEX_ALLTOALL_PIVOT (FUNC_INDEX_P2P+1)
 #define FUNC_INDEX(func, devredop, ncclType, al, pr) ((((((func)*ncclNumDevRedOps + (devredop))*ncclNumTypes) + (ncclType))*NCCL_NUM_ALGORITHMS+(al))*NCCL_NUM_PROTOCOLS+(pr))
 
+#define FUNC_INDEX_ALLREDUCE_SUM_F32_TREE_LL FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL)
+#define FUNC_INDEX_ALLREDUCE_SUM_F16_TREE_LL FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat16, NCCL_ALGO_TREE, NCCL_PROTO_LL)
+
 #define NCCL_FUNC_NAME(func, algo, proto, devredop, type) \
   ncclFunction_##func##_##algo##_##proto##_##devredop##_##type
 
@@ -38,7 +41,7 @@ struct ncclDevRedOpFull {
 /* Declare all collective operations */
 #define DECL5(func, algo, proto, devredop, type) \
   extern __device__ __attribute__((noinline)) void NCCL_FUNC_NAME(func, algo, proto, devredop, type)(); \
-  extern __global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm, struct ncclWorkElem c); \
+  extern __global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm); \
 
 #define CONCAT(a,b) a##b
 #define MACRO_IF(cond, t, f) CONCAT(MACRO_IF_, cond)(t, f)

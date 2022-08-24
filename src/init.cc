@@ -382,7 +382,6 @@ static ncclResult_t commAlloc(ncclComm_t* comret, int ndev, int rank, int virtua
   comm->p2pOpCount = 0;
 
   comm->argsptrs[0] = &comm->devComm;
-  comm->argsptrs[1] = &comm->args;
 #ifdef ENABLE_PROFILING
   NCCLCHECK(ncclCudaCalloc(&comm->hostDevComm.devProf, MAXCHANNELS*PROFILE_NUM_LAUNCHES));
 #endif
