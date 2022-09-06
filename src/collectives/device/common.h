@@ -588,10 +588,8 @@ __device__ void ncclKernel(struct ncclDevComm* comm)  {
       }
     }
     if (tid == 0) __insert_timestamp(__LINE__);
-    if (shmem.work.header.funcIndex == FnIndex)
-      RunWork<Fn, T, RedOp, Algo, Proto>().run(&shmem.work);
-    else
-      NCCL_CALL_FUNCTIONS<USING_LL128>(shmem.work.header.funcIndex);
+    if (shmem.work.header.funcIndex == FUNC_INDEX_ALLREDUCE_SUM_F32_TREE_LL)
+      ncclFunction_AllReduce_TREE_LL_Sum_float();
 
     if (shmem.work.header.isLast) break;
     __syncthreads();

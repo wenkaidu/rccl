@@ -22,6 +22,7 @@ struct ncclDevRedOpFull {
 #define FUNC_INDEX_P2P (ncclNumTypes+NCCL_NUM_FUNCTIONS*NCCL_NUM_ALGORITHMS*NCCL_NUM_PROTOCOLS*ncclNumTypes*ncclNumDevRedOps)
 #define FUNC_INDEX_ALLTOALL_PIVOT (FUNC_INDEX_P2P+1)
 #define FUNC_INDEX(func, devredop, ncclType, al, pr) ((((((func)*ncclNumDevRedOps + (devredop))*ncclNumTypes) + (ncclType))*NCCL_NUM_ALGORITHMS+(al))*NCCL_NUM_PROTOCOLS+(pr))
+#define FUNC_INDEX_ALLREDUCE_SUM_F32_TREE_LL FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL)
 
 #define NCCL_FUNC_NAME(func, algo, proto, devredop, type) \
   ncclFunction_##func##_##algo##_##proto##_##devredop##_##type

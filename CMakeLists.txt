@@ -194,7 +194,7 @@ set(CC_SOURCES
     src/misc/socket.cc
     src/misc/param.cc
     src/transport/coll_net.cc
-    src/transport/net.cc
+    src/transport/net_ts.cc
     src/transport/net_ib.cc
     src/transport/net_socket.cc
     src/transport/p2p.cc
