@@ -60,6 +60,8 @@ ncclResult_t ncclCudaGraphAddDestructor(struct ncclCudaGraph graph, hipHostFn_t 
 ncclResult_t ncclStrongStreamConstruct(struct ncclStrongStream* ss) {
   CUDACHECK(hipStreamCreateWithFlags(&ss->stream, hipStreamNonBlocking));
   CUDACHECK(hipEventCreateWithFlags(&ss->event, hipEventDisableTiming));
+  ss->eventVal = ss->expectedVal = 0;
+  CUDACHECK(hipHostRegister(&ss->eventVal, sizeof(uint64_t), 0));
   #if CUDART_VERSION >= 11030
     ss->node = nullptr;
     ss->graphId = (1ull<<(8*sizeof(long long)-1))-1;
@@ -73,6 +75,7 @@ ncclResult_t ncclStrongStreamDestruct(struct ncclStrongStream* ss) {
     CUDACHECK(cudaEventDestroy(ss->event));
   #endif
   CUDACHECK(hipStreamDestroy(ss->stream));
+  CUDACHECK(hipHostUnregister(&ss->eventVal));
   return ncclSuccess;
 }
 
@@ -199,8 +202,11 @@ ncclResult_t ncclStrongStreamWaitStream(
       CUDACHECK(cudaGraphAddEmptyNode(&a->node, graph.graph, pair, 2));
     }
   #else
-    CUDACHECK(hipEventRecord(b->event, b->stream));
-    CUDACHECK(hipStreamWaitEvent(a->stream, b->event, 0));
+    //CUDACHECK(hipEventRecord(b->event, b->stream));
+    //CUDACHECK(hipStreamWaitEvent(a->stream, b->event, 0));
+    b->expectedVal++;
+    CUDACHECK(hipStreamWriteValue64(b->stream, &b->eventVal, b->expectedVal, 0));
+    CUDACHECK(hipStreamWaitValue64(a->stream, &b->eventVal, b->expectedVal, hipStreamWaitValueEq, 0xFFFFFFFFFFFFFFFFL));
   #endif
   return ncclSuccess;
 }
@@ -238,8 +244,11 @@ ncclResult_t ncclStrongStreamWaitStream(
       // dependencies of a->node.
     }
   #else
-    CUDACHECK(hipEventRecord(a->event, b));
-    CUDACHECK(hipStreamWaitEvent(a->stream, a->event, 0));
+    //CUDACHECK(hipEventRecord(a->event, b));
+    //CUDACHECK(hipStreamWaitEvent(a->stream, a->event, 0));
+    a->expectedVal++;
+    CUDACHECK(hipStreamWriteValue64(b, &a->eventVal, a->expectedVal, 0));
+    CUDACHECK(hipStreamWaitValue64(a->stream, &a->eventVal, a->expectedVal, hipStreamWaitValueEq, 0xFFFFFFFFFFFFFFFFL));
   #endif
   return ncclSuccess;
 }
@@ -258,8 +267,11 @@ ncclResult_t ncclStrongStreamWaitStream(
       CUDACHECK(cudaStreamUpdateCaptureDependencies(a, &b->node, 1, cudaStreamAddCaptureDependencies));
     }
   #else
-    CUDACHECK(hipEventRecord(b->event, b->stream));
-    CUDACHECK(hipStreamWaitEvent(a, b->event, 0));
+    //CUDACHECK(hipEventRecord(b->event, b->stream));
+    //CUDACHECK(hipStreamWaitEvent(a, b->event, 0));
+    b->expectedVal++;
+    CUDACHECK(hipStreamWriteValue64(b->stream, &b->eventVal, b->expectedVal, 0));
+    CUDACHECK(hipStreamWaitValue64(a, &b->eventVal, b->expectedVal, hipStreamWaitValueEq, 0xFFFFFFFFFFFFFFFFL));
   #endif
   return ncclSuccess;
 }

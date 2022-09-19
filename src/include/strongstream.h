@@ -125,6 +125,7 @@ ncclResult_t ncclStrongStreamSynchronize(struct ncclStrongStream* ss);
 struct ncclStrongStream {
   hipStream_t stream;
   hipEvent_t event;
+  uint64_t eventVal, expectedVal;
   #if CUDART_VERSION >= 11030
   cudaGraphNode_t node; // null if never captured, otherwise never null again
   uint64_t graphId:63, eventIsLagging:1;

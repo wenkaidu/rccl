@@ -1518,7 +1518,7 @@ static ncclResult_t taskAppend(struct ncclComm* comm, struct ncclInfo const* inf
         l->stream = info->stream;
         l->next = tasks->streams;
         tasks->streams = l;
-        tasks->numStreams++;
+        //tasks->numStreams++;
         break;
       }
       if (l->stream == info->stream)
