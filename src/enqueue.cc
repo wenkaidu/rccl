@@ -28,12 +28,62 @@ struct ncclKernelMatch {
 };
 
 typedef void(*ncclKern_t)(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead);
+
+// Only generate inline kernels for LL
+#define NCCL_FUNC5(func, algo, devredop, dtype, specialized) \
+  /*LL    */{(void*)NCCL_KERN_NAME(func, algo, LL, devredop, dtype), true && specialized}, \
+  /*LL128 */{(void*)NCCL_KERN_NAME(func, algo, LL, devredop, dtype), false && specialized}, \
+  /*SIMPLE*/{(void*)NCCL_KERN_NAME(func, algo, LL, devredop, dtype), false && specialized}
+
+#define NCCL_FUNC4(func, devredop, type, specialized) \
+  NCCL_FUNC5(func, TREE,           devredop, type, specialized), \
+  NCCL_FUNC5(func, RING,           devredop, type, specialized), \
+  NCCL_FUNC5(func, COLLNET_DIRECT, devredop, type, specialized), \
+  NCCL_FUNC5(func, COLLNET_CHAIN,  devredop, type, specialized)
+
+// Must be consistent with ncclDataType_t
+#define NCCL_FUNCS3(func, devredop, reduction, specialized) \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, int8_t, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, uint8_t, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, int32_t, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, uint32_t, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, int64_t, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, uint64_t, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, half, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, float, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, double, int8_t), specialized), \
+  NCCL_FUNC4(func, devredop, MACRO_IF(reduction, rccl_bfloat16, int8_t), specialized) \
+
+// Must be consistent with ncclDevRedOp_t -- but we only generate kernel for sums.
+#define NCCL_FUNCS2(func, reduction) \
+  NCCL_FUNCS3(func, Sum, reduction, /*specialized=*/1), /*Sum*/ \
+  NCCL_FUNCS3(func, Sum, reduction, /*specialized=*/0), /*Prod*/ \
+  NCCL_FUNCS3(func, Sum, reduction, /*specialized=*/0), /*Max*/ \
+  NCCL_FUNCS3(func, Sum, reduction, /*specialized=*/0), /*Min*/ \
+  NCCL_FUNCS3(func, Sum, reduction, /*specialized=*/0), /*PreMulSum*/ \
+  NCCL_FUNCS3(func, Sum, reduction, /*specialized=*/0)  /*SumPostDiv*/
+
 // Must be consistent with the ncclFuncSet enum
-static ncclKernelMatch const ncclKerns[4] = {
-  {(void *)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), true},
-  {(void *)NCCL_KERN_NAME_DEBUG(SendRecv, RING, SIMPLE, Sum, int8_t), true},
-  {(void *)NCCL_KERN_NAME_LL128(SendRecv, RING, SIMPLE, Sum, int8_t), true},
-  {(void *)NCCL_KERN_NAME_LL128_DEBUG(SendRecv, RING, SIMPLE, Sum, int8_t), true},
+static ncclKernelMatch const ncclKerns[2+ncclNumTypes+NCCL_NUM_FUNCTIONS*ncclNumDevRedOps*ncclNumTypes*NCCL_NUM_ALGORITHMS*NCCL_NUM_PROTOCOLS] = {
+  NCCL_FUNCS2(Broadcast, /*reduction=*/0),
+  NCCL_FUNCS2(Reduce, /*reduction=*/1),
+  NCCL_FUNCS2(AllGather, /*reduction=*/0),
+  NCCL_FUNCS2(ReduceScatter, /*reduction=*/1),
+  NCCL_FUNCS2(AllReduce, /*reduction=*/1),
+  // We don't bake special kernels for the one-rank reductions
+  {/*int8*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*uint8*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*int32*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*uint32*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*int64*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*uint64*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*half*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*float*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*double*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {/*bfloat16*/(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
+  {(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), true},
+  // We don't bake special kernels for the alltoallv_pivot
+  {(void*)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t), false},
 };
 
 static ncclResult_t computeColl(struct ncclInfo* info /* input */, int* workFuncIndex, struct ncclWorkElem* work, struct ncclProxyOp* proxyOp /* output */);
@@ -540,8 +590,8 @@ static ncclResult_t scheduleCollTasksToPlan(
 
       plan->threadPerBlock = std::max(plan->threadPerBlock, info.nThreads);
       if (!plan->kernelSpecialized) {
-        plan->kernelFn = ncclKerns[ncclGetKernelIndex(comm)].kernelFn;
-        plan->kernelSpecialized = ncclKerns[ncclGetKernelIndex(comm)].specialized;
+        plan->kernelFn = ncclKerns[workFuncIndex].kernelFn;
+        plan->kernelSpecialized = ncclKerns[workFuncIndex].specialized;
       }
     }
   }
@@ -571,8 +621,8 @@ static ncclResult_t scheduleP2pTasksToPlan(
 
   plan->threadPerBlock = std::max(plan->threadPerBlock, NCCL_MAX_NTHREADS);
   if (!plan->kernelSpecialized) {
-    plan->kernelFn = ncclKerns[ncclGetKernelIndex(comm)].kernelFn;
-    plan->kernelSpecialized = ncclKerns[ncclGetKernelIndex(comm)].specialized;
+    plan->kernelFn = ncclKerns[FUNC_INDEX_P2P].kernelFn;
+    plan->kernelSpecialized = ncclKerns[FUNC_INDEX_P2P].specialized;
   }
 
   // Compute how much to split operations
