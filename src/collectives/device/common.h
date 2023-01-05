@@ -199,148 +199,6 @@ static const __device__ constexpr ncclKernelFunc_t ncclFuncs_ll128[]{
 #endif
 };
 
-template<unsigned short f, unsigned short l, bool u>
-struct Caller {
-  static __forceinline__ __device__ __host__
-  void call(unsigned short funcIndex) noexcept
-  {
-    constexpr unsigned short m = f + (l - f) / 2;
-
-     return (funcIndex < m) ? Caller<f, m, u>::call(funcIndex) : Caller<m, l, u>::call(funcIndex);
-  }
-};
-
-template<unsigned short f, bool u>
-struct Caller<f, f + 1, u>{
-  static __forceinline__ __device__ __host__
-  void call(unsigned short funcIndex) noexcept { if (u) ncclFuncs_ll128[f](); else ncclFuncs[f](); }
-};
-
-static_assert(FUNC_INDEX_P2P == 3610, "Wrong P2P function index");
-static_assert(FUNC_INDEX_ALLTOALL_PIVOT == 3611, "Wrong AllToAllPivot function index");
-
-template<bool USING_LL128>
-__forceinline__
-__device__
-void NCCL_CALL_FUNCTIONS(unsigned short funcIndex) noexcept {
-#if defined(BUILD_ALLREDUCE_ONLY)
-  if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE))
-    ncclFunction_AllReduce_RING_SIMPLE_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_RING, NCCL_PROTO_LL))
-    ncclFunction_AllReduce_RING_LL_Sum_float();
-  else if (USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_RING, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_RING_LL128_Sum_float();
-  else if (!USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_RING, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_RING_LL_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_SIMPLE))
-    ncclFunction_AllReduce_TREE_SIMPLE_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL))
-    ncclFunction_AllReduce_TREE_LL_Sum_float();
-  else if (USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_TREE_LL128_Sum_float();
-  else if (!USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_TREE, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_TREE_LL_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_DIRECT, NCCL_PROTO_SIMPLE))
-    ncclFunction_AllReduce_COLLNET_DIRECT_SIMPLE_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_DIRECT, NCCL_PROTO_LL))
-    ncclFunction_AllReduce_COLLNET_DIRECT_LL_Sum_float();
-  else if (USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_DIRECT, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_COLLNET_DIRECT_LL128_Sum_float();
-  else if (!USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_DIRECT, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_COLLNET_DIRECT_LL_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_CHAIN, NCCL_PROTO_SIMPLE))
-    ncclFunction_AllReduce_COLLNET_CHAIN_SIMPLE_Sum_float();
-  else if (funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_CHAIN, NCCL_PROTO_LL))
-    ncclFunction_AllReduce_COLLNET_CHAIN_LL_Sum_float();
-  else if (USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_CHAIN, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_COLLNET_CHAIN_LL128_Sum_float();
-  else if (!USING_LL128 && funcIndex == FUNC_INDEX(ncclFuncAllReduce, ncclSum, ncclFloat32, NCCL_ALGO_COLLNET_CHAIN, NCCL_PROTO_LL128))
-    ncclFunction_AllReduce_COLLNET_CHAIN_LL_Sum_float();
-  else
-    assert("Unsupported function index");
-#else
-  if (funcIndex < 720) {
-    if (funcIndex % 12 == 0) ncclFunction_Broadcast_TREE_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 1) ncclFunction_Broadcast_TREE_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 1) ncclFunction_Broadcast_TREE_LL_Sum_int8_t();
-    else if (funcIndex % 12 == 2) ncclFunction_Broadcast_TREE_SIMPLE_Sum_int8_t();
-    else if (funcIndex % 12 == 3) ncclFunction_Broadcast_RING_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 4) ncclFunction_Broadcast_RING_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 4) ncclFunction_Broadcast_RING_LL_Sum_int8_t();
-    else if (funcIndex % 12 == 5) ncclFunction_Broadcast_RING_SIMPLE_Sum_int8_t();
-    else if (funcIndex % 12 == 6) ncclFunction_Broadcast_COLLNET_DIRECT_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 7) ncclFunction_Broadcast_COLLNET_DIRECT_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 7) ncclFunction_Broadcast_COLLNET_DIRECT_LL_Sum_int8_t();
-    else if (funcIndex % 12 == 8) ncclFunction_Broadcast_COLLNET_DIRECT_SIMPLE_Sum_int8_t();
-    else if (funcIndex % 12 == 9) ncclFunction_Broadcast_COLLNET_CHAIN_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 10) ncclFunction_Broadcast_COLLNET_CHAIN_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 10) ncclFunction_Broadcast_COLLNET_CHAIN_LL_Sum_int8_t();
-    else ncclFunction_Broadcast_COLLNET_CHAIN_SIMPLE_Sum_int8_t();
-  }
-  else if (funcIndex < 1440) Caller<720, 1440, USING_LL128>::call(funcIndex);
-  else if (funcIndex < 2160) {
-    if (funcIndex % 12 == 0) ncclFunction_AllGather_TREE_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 1) ncclFunction_AllGather_TREE_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 1) ncclFunction_AllGather_TREE_LL_Sum_int8_t();
-    else if (funcIndex % 12 == 2) ncclFunction_AllGather_TREE_SIMPLE_Sum_int8_t();
-    else if (funcIndex % 12 == 3) ncclFunction_AllGather_RING_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 4) ncclFunction_AllGather_RING_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 4) ncclFunction_AllGather_RING_LL_Sum_int8_t();
-    else if (funcIndex % 12 == 5) ncclFunction_AllGather_RING_SIMPLE_Sum_int8_t();
-    else if (funcIndex % 12 == 6) ncclFunction_AllGather_COLLNET_DIRECT_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 7) ncclFunction_AllGather_COLLNET_DIRECT_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 7) ncclFunction_AllGather_COLLNET_DIRECT_LL_Sum_int8_t();
-    else if (funcIndex % 12 == 8) ncclFunction_AllGather_COLLNET_DIRECT_SIMPLE_Sum_int8_t();
-    else if (funcIndex % 12 == 9) ncclFunction_AllGather_COLLNET_CHAIN_LL_Sum_int8_t();
-    else if (USING_LL128 && funcIndex % 12 == 10) ncclFunction_AllGather_COLLNET_CHAIN_LL128_Sum_int8_t();
-    else if (!USING_LL128 && funcIndex % 12 == 10) ncclFunction_AllGather_COLLNET_CHAIN_LL_Sum_int8_t();
-    else ncclFunction_AllGather_COLLNET_CHAIN_SIMPLE_Sum_int8_t();
-  }
-  else if (funcIndex < 3600) Caller<2160, 3600, USING_LL128>::call(funcIndex);
-  else {
-    switch (funcIndex - 3600) {
-      case 0:
-        ncclFunction_OneRankReduce_PreMulSum_int8_t();
-        break;
-      case 1:
-        ncclFunction_OneRankReduce_PreMulSum_uint8_t();
-        break;
-      case 2:
-        ncclFunction_OneRankReduce_PreMulSum_int32_t();
-        break;
-      case 3:
-        ncclFunction_OneRankReduce_PreMulSum_uint32_t();
-        break;
-      case 4:
-        ncclFunction_OneRankReduce_PreMulSum_int64_t();
-        break;
-      case 5:
-        ncclFunction_OneRankReduce_PreMulSum_uint64_t();
-        break;
-      case 6:
-        ncclFunction_OneRankReduce_PreMulSum_half();
-        break;
-      case 7:
-        ncclFunction_OneRankReduce_PreMulSum_float();
-        break;
-      case 8:
-        ncclFunction_OneRankReduce_PreMulSum_double();
-        break;
-      case 9:
-        ncclFunction_OneRankReduce_PreMulSum_rccl_bfloat16();
-        break;
-      case 10:
-        ncclFunction_SendRecv_RING_SIMPLE_Sum_int8_t();
-        break;
-      case 11:
-        ncclFunction_AllToAllPivot_RING_SIMPLE_Sum_int8_t();
-      default:
-        break;
-    }
-  }
-#endif
-}
-
 template <ncclFunc_t FUNCTION, int ALGO, int PROTO, class REDOP, typename T, int UNROLL>
 class ncclFunction {
   public:
@@ -660,7 +518,8 @@ __forceinline__ __device__ void ncclKernel(
     if (ncclShmem.work.header.funcIndex == FnIndex) {
       RunWork<Fn, T, RedOp, Algo, Proto>().run(&ncclShmem.work);
     } else {
-      NCCL_CALL_FUNCTIONS<USING_LL128>(ncclShmem.work.header.funcIndex);
+      if (USING_LL128) ncclFuncs_ll128[ncclShmem.work.header.funcIndex]();
+      else ncclFuncs[ncclShmem.work.header.funcIndex]();
     }
 
     int workIxNext = ncclShmem.work.header.workNext;

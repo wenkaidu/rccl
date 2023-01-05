@@ -47,6 +47,7 @@ size_t ncclKernMaxLocalSize() {
   for (int i = 0; i < numNcclKerns; i++) {
     if (ncclKerns[i].kernelFn != nullptr) {
       CUDACHECKGOTO(cudaFuncGetAttributes(&attr, reinterpret_cast<const void*>(ncclKerns[i].kernelFn)), res, error);
+      INFO(NCCL_INIT, "kernel %d size %zi", i, attr.localSizeBytes);
       if (attr.localSizeBytes > max) max = attr.localSizeBytes;
     }
   }

@@ -1395,6 +1395,7 @@ affinity_restore:
 }
 
 NCCL_PARAM(SetStackSize, "SET_STACK_SIZE", 0);
+NCCL_PARAM(ForceStackSize, "FORCE_STACK_SIZE", 0);
 
 struct ncclCommInitRankAsyncJob {
   struct ncclAsyncJob base;
@@ -1425,8 +1426,9 @@ static ncclResult_t ncclCommInitRankFunc(struct ncclAsyncJob* job_) {
   // Set the maximum kernel stack size of all kernels to avoid
   // a CUDA memory reconfig on load (c.f. NVSHMEM issue)
   if (maxLocalSizeBytes > 0 && ncclParamSetStackSize() == 1) {
-    TRACE(NCCL_INIT, "Setting cudaLimitStackSize to %zi", maxLocalSizeBytes);
-    //CUDACHECKIGNORE(hipDeviceSetLimit(hipLimitStackSize, maxLocalSizeBytes));
+    maxLocalSizeBytes = ncclParamForceStackSize() ? ncclParamForceStackSize() : maxLocalSizeBytes;
+    INFO(NCCL_INIT, "Setting cudaLimitStackSize to %zi", maxLocalSizeBytes);
+    CUDACHECKIGNORE(cudaDeviceSetLimit(cudaLimitStackSize, maxLocalSizeBytes));
   }
   NCCLCHECKGOTO(commAlloc(newcomm, nranks, myrank, virtualId), res, cleanup);
   NCCLCHECKGOTO(initTransportsRank(*newcomm, &commId), res, cleanup);
