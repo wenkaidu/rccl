@@ -91,7 +91,7 @@ inline void ncclGroupCommJoin(struct ncclComm* comm) {
     ncclMemoryStackPush(&comm->memScoped);
   }
 
-  ncclGroupBlocking = comm->blocking;
+  ncclGroupBlocking = comm->config.blocking;
 }
 
 // Add comm to this thread's group needing preconnect
