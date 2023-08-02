@@ -44,7 +44,7 @@ ROCM_PATH=${ROCM_PATH:="/opt/rocm"}
 build_address_sanitizer=false
 build_allreduce_only=false
 install_dependencies=false
-build_release=true
+build_release=false
 build_bfd=true
 install_library=false
 build_local_gpu_only=false

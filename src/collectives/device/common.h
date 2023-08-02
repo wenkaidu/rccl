@@ -549,16 +549,6 @@ __forceinline__ __device__ void ncclKernel(
     if (tid == 0) __insert_timestamp(__LINE__);
     if (ncclShmem.work.header.funcIndex == FnIndex) {
       RunWork<Fn, T, RedOp, Algo, Proto>().run(&ncclShmem.work);
-    } else {
-#ifdef USE_INDIRECT_FUNCTION_CALL
-      ncclFuncs[ncclShmem.work.header.funcIndex]();
-#else
-#ifdef ENABLE_LL128
-      NCCL_CALL_FUNCTIONS<1>(ncclShmem.work.header.funcIndex);
-#else
-      NCCL_CALL_FUNCTIONS<0>(ncclShmem.work.header.funcIndex);
-#endif
-#endif
     }
 
     int workIxNext = ncclShmem.work.header.workNext;
@@ -591,11 +581,6 @@ __forceinline__ __device__ void ncclKernel(
 #define IMPL_COLL_KERN(func, algo, proto, devredop, type, fIndex) \
 __launch_bounds__(NCCL_MAX_NTHREADS, 1) \
 __global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead) { \
-  ncclKernel<ncclFunc##func, type, Func##devredop<type>, NCCL_ALGO_##algo, NCCL_PROTO_##proto, fIndex, false>(comm, channelMask, workHead); \
-} \
- \
-__launch_bounds__(NCCL_MAX_NTHREADS, 1) \
-__global__ void NCCL_KERN_NAME_DEBUG(func, algo, proto, devredop, type)(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead) { \
   ncclKernel<ncclFunc##func, type, Func##devredop<type>, NCCL_ALGO_##algo, NCCL_PROTO_##proto, fIndex, true>(comm, channelMask, workHead); \
 }
 #else
@@ -626,11 +611,16 @@ __device__  __attribute__((noinline)) void NCCL_FUNC_NAME(func, algo, proto, dev
 #define IMPL_COLL4(func, algo, devredop, type, ncclType) \
   IMPL_COLL_FUNC(func, algo, LL,     devredop, type) \
   IMPL_COLL_FUNC(func, algo, LL128,  devredop, type) \
-  IMPL_COLL_FUNC(func, algo, SIMPLE, devredop, type)
+  IMPL_COLL_FUNC(func, algo, SIMPLE, devredop, type) \
+  IMPL_COLL_KERN(func, algo, LL,     devredop, type, FUNC_INDEX(ncclFunc##func, ncclDev##devredop, ncclType, NCCL_ALGO_##algo, NCCL_PROTO_LL)) \
+  IMPL_COLL_KERN(func, algo, LL128,  devredop, type, FUNC_INDEX(ncclFunc##func, ncclDev##devredop, ncclType, NCCL_ALGO_##algo, NCCL_PROTO_LL128)) \
+  IMPL_COLL_KERN(func, algo, SIMPLE, devredop, type, FUNC_INDEX(ncclFunc##func, ncclDev##devredop, ncclType, NCCL_ALGO_##algo, NCCL_PROTO_SIMPLE))
 #else
 #define IMPL_COLL4(func, algo, devredop, type, ncclType) \
   IMPL_COLL_FUNC(func, algo, LL,     devredop, type) \
-  IMPL_COLL_FUNC(func, algo, SIMPLE, devredop, type)
+  IMPL_COLL_FUNC(func, algo, SIMPLE, devredop, type) \
+  IMPL_COLL_KERN(func, algo, LL,     devredop, type, FUNC_INDEX(ncclFunc##func, ncclDev##devredop, ncclType, NCCL_ALGO_##algo, NCCL_PROTO_LL)) \
+  IMPL_COLL_KERN(func, algo, SIMPLE, devredop, type, FUNC_INDEX(ncclFunc##func, ncclDev##devredop, ncclType, NCCL_ALGO_##algo, NCCL_PROTO_SIMPLE))
 #endif
 
 #define IMPL_COLL3(func, devredop, type, ncclType) \
