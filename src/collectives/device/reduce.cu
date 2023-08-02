@@ -4,10 +4,8 @@
  * See LICENSE.txt for license information
  ************************************************************************/
 
-/*This file is now generated in CMake*/
+#include "reduce.h"
+#include "common.h"
+#include "collectives.h"
 
-// #include "reduce.h"
-// #include "common.h"
-// #include "collectives.h"
-
-// IMPL_COLL_R(Reduce);
+IMPL_COLL_R(Reduce);

@@ -4,10 +4,8 @@
  * See LICENSE.txt for license information
  ************************************************************************/
 
-/*This file is now generated in CMake*/
+#include "reduce_scatter.h"
+#include "common.h"
+#include "collectives.h"
 
-// #include "reduce_scatter.h"
-// #include "common.h"
-// #include "collectives.h"
-
-// IMPL_COLL_R(ReduceScatter);
+IMPL_COLL_R(ReduceScatter);

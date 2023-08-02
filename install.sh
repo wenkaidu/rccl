@@ -6,27 +6,6 @@
 # #################################################
 ROCM_PATH=${ROCM_PATH:="/opt/rocm"}
 
-# Default values
-build_address_sanitizer=false
-build_allreduce_only=false
-build_bfd=true
-build_freorg_bkwdcomp=true
-build_local_gpu_only=false
-build_package=false
-build_release=true
-build_static=false
-build_tests=false
-build_verbose=0
-clean_build=true
-collective_trace=true
-enable_ninja=""
-install_dependencies=false
-install_library=false
-num_parallel_jobs=16
-npkit_enabled=false
-run_tests=false
-run_tests_all=false
-time_trace=false
 
 # #################################################
 # helper functions
@@ -44,8 +23,7 @@ function display_help()
     echo "    -f|--fast                  Quick-build RCCL (local gpu arch only, no backtrace, and collective trace support)"
     echo "    -h|--help                  Prints this help message"
     echo "    -i|--install               Install RCCL library (see --prefix argument below)"
-    echo "    -j|--jobs                  Specify how many parallel compilation jobs to run ($num_parallel_jobs by default)"
-    echo "    -l|--local_gpu_only        Only compile for local GPU architecture"
+    echo "       --local_gpu_only        Only compile for local GPU architecture"
     echo "       --no_clean              Don't delete files if they already exist"
     echo "       --npkit-enable          Compile with npkit enabled"
     echo "    -p|--package_build         Build RCCL package"
@@ -55,9 +33,30 @@ function display_help()
     echo "    -r|--run_tests_quick       Run small subset of rccl unit tests (must be built already)"
     echo "       --static                Build RCCL as a static library instead of shared library"
     echo "    -t|--tests_build           Build rccl unit tests, but do not run"
-    echo "       --time-trace            Plot the build time of RCCL"
     echo "       --verbose               Show compile commands"
 }
+
+# #################################################
+# global variables
+# #################################################
+ROCM_PATH=${ROCM_PATH:="/opt/rocm"}
+
+build_address_sanitizer=false
+build_allreduce_only=false
+install_dependencies=false
+build_release=true
+build_bfd=true
+install_library=false
+build_local_gpu_only=false
+clean_build=true
+npkit_enabled=false
+build_package=false
+build_freorg_bkwdcomp=true
+run_tests=false
+run_tests_all=false
+build_static=false
+build_tests=false
+build_verbose=0
 
 # #################################################
 # Parameter parsing
@@ -66,7 +65,7 @@ function display_help()
 # check if we have a modern version of getopt that can handle whitespace and long parameters
 getopt -T
 if [[ $? -eq 4 ]]; then
-    GETOPT_PARSE=$(getopt --name "${0}" --options dfhij:lprt --longoptions address-sanitizer,build_allreduce_only,dependencies,debug,disable_backtrace,disable-colltrace,fast,help,install,jobs:,local_gpu_only,no_clean,npkit-enable,package_build,prefix:,rm-legacy-include-dir,run_tests_all,run_tests_quick,tests_build,time-trace,verbose -- "$@")
+    GETOPT_PARSE=$(getopt --name "${0}" --longoptions address-sanitizer,build_allreduce_only,dependencies,debug,disable_backtrace,fast,help,install,local_gpu_only,no_clean,npkit-enable,package_build,prefix:,rm-legacy-include-dir,run_tests_all,run_tests_quick,tests_build,verbose --options hidptrs -- "$@")
 else
     echo "Need a new version of getopt"
     exit 1
@@ -81,28 +80,25 @@ eval set -- "${GETOPT_PARSE}"
 
 while true; do
     case "${1}" in
-         --address-sanitizer)        build_address_sanitizer=true;                                       shift ;;
-         --build_allreduce_only)     build_allreduce_only=true;                                          shift ;;
-    -d | --dependencies)             install_dependencies=true;                                          shift ;;
-         --debug)                    build_release=false;                                                shift ;;
-         --disable_backtrace)        build_bfd=false;                                                    shift ;;
-         --disable-colltrace)        collective_trace=false;                                             shift ;;
-    -f | --fast)                     build_bfd=false; build_local_gpu_only=true; collective_trace=false; shift ;;
-    -h | --help)                     display_help;                                                       exit 0 ;;
-    -i | --install)                  install_library=true;                                               shift ;;
-    -j | --jobs)                     num_parallel_jobs=${2};                                             shift 2 ;;
-    -l | --local_gpu_only)           build_local_gpu_only=true;                                          shift ;;
-         --no_clean)                 clean_build=false;                                                  shift ;;
-         --npkit-enable)             npkit_enabled=true;                                                 shift ;;
-    -p | --package_build)            build_package=true;                                                 shift ;;
-         --prefix)                   install_prefix=${2};                                                shift 2 ;;
-         --rm-legacy-include-dir)    build_freorg_bkwdcomp=false;                                        shift ;;
-    -r | --run_tests_quick)          run_tests=true;                                                     shift ;;
-         --run_tests_all)            run_tests=true; run_tests_all=true;                                 shift ;;
-         --static)                   build_static=true;                                                  shift ;;
-    -t | --tests_build)              build_tests=true;                                                   shift ;;
-         --time-trace)               time_trace=true;                                                    shift ;;
-         --verbose)                  build_verbose=1;                                                    shift ;;
+         --address-sanitizer)        build_address_sanitizer=true;               shift ;;
+         --build_allreduce_only)     build_allreduce_only=true;                  shift ;;
+    -d | --dependencies)             install_dependencies=true;                  shift ;;
+         --debug)                    build_release=false;                        shift ;;
+         --disable_backtrace)        build_bfd=false;                            shift ;;
+         --fast)                     build_bfd=false; build_local_gpu_only=true; shift ;;
+    -h | --help)                     display_help;                               exit 0 ;;
+    -i | --install)                  install_library=true;                       shift ;;
+         --local_gpu_only)           build_local_gpu_only=true;                  shift ;;
+         --no_clean)                 clean_build=false;                          shift ;;
+         --npkit-enable)             npkit_enabled=true;                         shift ;;
+    -p | --package_build)            build_package=true;                         shift ;;
+         --prefix)                   install_prefix=${2}                         shift 2 ;;
+         --rm-legacy-include-dir)    build_freorg_bkwdcomp=false;                shift ;;
+    -r | --run_tests_quick)          run_tests=true;                             shift ;;
+         --run_tests_all)            run_tests=true; run_tests_all=true;         shift ;;
+         --static)                   build_static=true;                          shift ;;
+    -t | --tests_build)              build_tests=true;                           shift ;;
+         --verbose)                  build_verbose=1;                            shift ;;
     --) shift ; break ;;
     *)  echo "Unexpected command line parameter received; aborting";
         exit 1
@@ -316,24 +312,17 @@ fi
 
 check_exit_code "$?"
 
-if ($time_trace); then
-    build_system="ninja"
-    enable_ninja="-GNinja"
-else
-    build_system="make"
-fi
-
 if ($build_tests) || (($run_tests) && [[ ! -f ./test/rccl-UnitTests ]]); then
-    CXX=$ROCM_BIN_PATH/hipcc $cmake_executable $cmake_common_options -DBUILD_TESTS=ON -DNPKIT_FLAGS="${npkit_options}" -DCMAKE_INSTALL_PREFIX=$ROCM_PATH -DROCM_PATH=$ROCM_PATH $enable_ninja ../../.
+    CXX=$ROCM_BIN_PATH/hipcc $cmake_executable $cmake_common_options -DENABLE_LL128=1 -DBUILD_TESTS=ON -DNPKIT_FLAGS="${npkit_options}" -DCMAKE_INSTALL_PREFIX=$ROCM_PATH -DROCM_PATH=$ROCM_PATH ../../.
 else
-    CXX=$ROCM_BIN_PATH/hipcc $cmake_executable $cmake_common_options -DBUILD_TESTS=OFF -DNPKIT_FLAGS="${npkit_options}" -DCMAKE_INSTALL_PREFIX=$ROCM_PATH -DROCM_PATH=$ROCM_PATH $enable_ninja ../../.
+    CXX=$ROCM_BIN_PATH/hipcc $cmake_executable $cmake_common_options -DENABLE_LL128=1 -DBUILD_TESTS=OFF -DNPKIT_FLAGS="${npkit_options}" -DCMAKE_INSTALL_PREFIX=$ROCM_PATH -DROCM_PATH=$ROCM_PATH ../../.
 fi
 check_exit_code "$?"
 
 if ($install_library); then
-    VERBOSE=${build_verbose} $build_system -j $num_parallel_jobs install
+    VERBOSE=${build_verbose} make -j$(nproc) install
 else
-    VERBOSE=${build_verbose} $build_system -j $num_parallel_jobs
+    VERBOSE=${build_verbose} make -j$(nproc)
 fi
 check_exit_code "$?"
 
@@ -353,22 +342,5 @@ if ($run_tests); then
     else
         echo "rccl unit tests have not been built yet; please re-run script with -t to build rccl unit tests."
         exit 1
-    fi
-fi
-
-if ($time_trace); then
-    search_dir="../../"
-    time_trace_dir=$(find "$search_dir" -type d -name "time-trace" -print -quit)
-
-    if [ "$time_trace_dir" ]; then
-        time_trace_script="$time_trace_dir/rccl-TimeTrace.sh"
-        if [ -x "$time_trace_script" ]; then
-            echo "Generating RCCL-compile-timeline.html..."
-            (cd "$time_trace_dir" && ./rccl-TimeTrace.sh)
-        else
-            echo "Error: Unable to execute $time_trace_script. Make sure the file has the correct permissions."
-        fi
-    else
-        echo "Error: time-trace folder not found in $search_dir."
     fi
 fi
