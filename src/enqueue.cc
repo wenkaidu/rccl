@@ -20,8 +20,8 @@
 // Only generate inline kernels for LL
 #define NCCL_FUNC5(func, algo, devredop, dtype) \
   (void*)NCCL_KERN_NAME(func, algo, LL, devredop, dtype), \
-  (void*)NCCL_KERN_NAME(func, algo, LL, devredop, dtype), \
-  (void*)NCCL_KERN_NAME(func, algo, LL, devredop, dtype)
+  (void*)NCCL_KERN_NAME(func, algo, LL128, devredop, dtype), \
+  (void*)NCCL_KERN_NAME(func, algo, SIMPLE, devredop, dtype)
 
 #define NCCL_FUNC4(func, devredop, type) \
   (void*)NCCL_FUNC5(func, TREE,    devredop, type), \
@@ -55,10 +55,10 @@
 // Must be consistent with ncclDevRedOp_t -- but we only generate kernel for sums.
 #define NCCL_FUNCS2A(func) \
   NCCL_FUNCS3A(func, Sum), /*Sum*/ \
-  NCCL_FUNCS3A(func, Sum), /*Prod*/ \
-  NCCL_FUNCS3A(func, Sum), /*Max*/ \
-  NCCL_FUNCS3A(func, Sum), /*Min*/ \
-  NCCL_FUNCS3A(func, Sum), /*PreMulSum*/ \
+  NCCL_FUNCS3A(func, Prod), /*Prod*/ \
+  NCCL_FUNCS3A(func, Max), /*Max*/ \
+  NCCL_FUNCS3A(func, Min), /*Min*/ \
+  NCCL_FUNCS3A(func, PreMulSum), /*PreMulSum*/ \
   NCCL_FUNCS3A(func, Sum)  /*SumPostDiv*/
 #define NCCL_FUNCS2B(func) \
   NCCL_FUNCS3B(func, Sum), /*Sum*/ \
@@ -68,13 +68,14 @@
   NCCL_FUNCS3B(func, Sum), /*PreMulSum*/ \
   NCCL_FUNCS3B(func, Sum)  /*SumPostDiv*/
 
-typedef void(*ncclKern_t)(struct ncclDevComm* comm);
 // Must be consistent with the ncclFuncSet enum
-static ncclKern_t const ncclKerns[4] = {
-  NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t),
-  NCCL_KERN_NAME_DEBUG(SendRecv, RING, SIMPLE, Sum, int8_t),
-  NCCL_KERN_NAME_LL128(SendRecv, RING, SIMPLE, Sum, int8_t),
-  NCCL_KERN_NAME_LL128_DEBUG(SendRecv, RING, SIMPLE, Sum, int8_t),
+static void* const ncclKerns[1+ncclNumTypes+NCCL_NUM_FUNCTIONS*ncclNumDevRedOps*ncclNumTypes*NCCL_NUM_ALGORITHMS*NCCL_NUM_PROTOCOLS] = {
+  NCCL_FUNCS2B(Broadcast),
+  NCCL_FUNCS2A(Reduce),
+  NCCL_FUNCS2B(AllGather),
+  NCCL_FUNCS2A(ReduceScatter),
+  NCCL_FUNCS2A(AllReduce),
+  (void *)NCCL_KERN_NAME(SendRecv, RING, SIMPLE, Sum, int8_t),
 };
 
 // Determine the maximum kernel stack size of all CUDA kernels
@@ -752,7 +753,7 @@ static ncclResult_t ncclSetupCollKernel(struct ncclInfo* info) {
 
   // Inline the first kernel
   if (params->func == NULL) {
-    params->func = (void *)ncclKerns[ncclGetKernelIndex(comm)];
+    params->func = (void *)ncclKerns[work->header.funcIndex];
   }
 
   // Register and exchange input and output buffers
@@ -1085,7 +1086,7 @@ ncclResult_t ncclSetupP2pKernel(struct ncclInfo* info) {
   // Just for CUDA kernel to know this is a P2P operation
   // The CUDA kernel does not use the inlined first work element as fastpath argument
   if (params->func == NULL) {
-    params->func = (void *)ncclKerns[ncclGetKernelIndex(comm)];
+    params->func = (void *)ncclKerns[eqElem->work.header.funcIndex];
     //params->func = ncclKerns[eqElem->work.header.funcIndex];
   }
   return ncclSuccess;

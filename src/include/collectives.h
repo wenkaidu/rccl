@@ -47,10 +47,7 @@ struct ncclDevRedOpFull {
 /* Declare all collective operations */
 #define DECL5(func, algo, proto, devredop, type) \
   extern __device__ __attribute__((noinline)) void NCCL_FUNC_NAME(func, algo, proto, devredop, type)(); \
-  extern __global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm); \
-  extern __global__ void NCCL_KERN_NAME_DEBUG(func, algo, proto, devredop, type)(struct ncclDevComm* comm); \
-  extern __global__ void NCCL_KERN_NAME_LL128(func, algo, proto, devredop, type)(struct ncclDevComm* comm); \
-  extern __global__ void NCCL_KERN_NAME_LL128_DEBUG(func, algo, proto, devredop, type)(struct ncclDevComm* comm);
+  extern __global__ void NCCL_KERN_NAME(func, algo, proto, devredop, type)(struct ncclDevComm* comm);
 
 #define CONCAT(a,b) a##b
 #define MACRO_IF(cond, t, f) CONCAT(MACRO_IF_, cond)(t, f)
@@ -58,9 +55,9 @@ struct ncclDevRedOpFull {
 #define MACRO_IF_1(t, f) t
 
 #define DECL4(func, algo, devredop, type, undef) \
-  MACRO_IF(undef, /*undefined*/, DECL5(func, algo, SIMPLE, devredop, type)) \
-  MACRO_IF(undef, /*undefined*/, DECL5(func, algo, LL,     devredop, type)) \
-  MACRO_IF(undef, /*undefined*/, DECL5(func, algo, LL128,  devredop, type))
+  DECL5(func, algo, SIMPLE, devredop, type) \
+  DECL5(func, algo, LL,     devredop, type) \
+  DECL5(func, algo, LL128,  devredop, type)
 
 #define DECL3(func, devredop, type, undef) \
   DECL4(func, RING,    devredop, type, undef) \
