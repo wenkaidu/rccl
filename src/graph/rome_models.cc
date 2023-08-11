@@ -617,6 +617,19 @@ static struct rcclRomeModel rome_model_81 = {
   .options = "noCpuCheck=1",
 };
 
+static struct rcclRomeModel rome_model_82 = {
+  .nGpus = 8, .nCpus = 4, .nNics = 8, .nLinks = 3,
+  .gpuIds = { 0x4a000, 0x50000, 0xa000, 0xf000, 0xca000, 0xd0000, 0x8a000, 0x90000, },
+  .nicIds = { 0x45000, 0x45000, 0x13000, 0x13000, 0xc5000, 0xc5000, 0x85000, 0x85000, },
+  .gpuNuma = { 0, 0, 1, 1, 2, 2, 3, 3, },
+  .nicNuma = { 0, 0, 1, 1, 2, 2, 3, 3, },
+  .connMatrix = { 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, },
+  .gdrLevel = { PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, },
+  .pattern = "22222222",
+  .ringBase = "5 4 7 6 2 3 0 1|1 0 3 2 6 7 4 5",
+  .options = "",
+};
+
 static struct rcclRomeModel romeTopoModels[] = {
   rome_model_22,
   rome_model_25,
@@ -659,6 +672,7 @@ static struct rcclRomeModel romeTopoModels[] = {
   rome_model_79,
   rome_model_80,
   rome_model_81,
+  rome_model_82,
 };
 
 /* Parse user defined rings. Format is like :
