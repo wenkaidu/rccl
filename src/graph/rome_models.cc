@@ -844,20 +844,21 @@ ncclResult_t parseGraphLight(const char* str, struct ncclTopoSystem* system, str
               break;
           if (j < ngpus)
           {
-            graph->treeBase[r][x] = system->nodes[GPU].nodes[j].gpu.rank;
+            graph->treeBase[x][r] = system->nodes[GPU].nodes[j].gpu.rank;
             y=r;
           }
           else
             return ncclInternalError;
         }
         y++;
-        graph->treeBase[y][x] = -1;
+        graph->treeBase[x][y] = -1;
         x++;
         gpu=0;
       }
     }
   } while (str[offset++] != 0);
-  graph->treeBase[0][x] = -1;
+  graph->treeBase[x][0] = -1;
+
   return ncclSuccess;
 }
 
@@ -1462,7 +1463,6 @@ ncclResult_t parse1H16P(struct ncclTopoSystem* system, struct ncclTopoGraph* gra
   // create 16P1H based on reference and remapped ids
   NCCLCHECK(parseGraph(romeTopoModels[i].ringBase, system, graph, g16, nnets > 1 ? n : NULL));
 
-  NCCLCHECK(parseGraphLight(romeTopoModels[i].treeBase, system, graph, g16));
   // clean up
   free(all_gpu_permutations);
   return ncclSuccess;

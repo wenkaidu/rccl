@@ -886,6 +886,12 @@ ncclResult_t ncclTopoCompute(ncclTopoSystem* system, struct ncclTopoGraph* graph
     if (graph->nChannels > 0) return ncclSuccess;
   }
 
+    str = getenv("NCCL_TREE");
+  if (str) {
+    // user supplied topo
+    NCCLCHECK(parseGraphLight(str, system, graph, NULL));
+  }
+
   str = getenv("NCCL_RINGS");
   if (str) {
     // user supplied topo
@@ -909,6 +915,7 @@ ncclResult_t ncclTopoCompute(ncclTopoSystem* system, struct ncclTopoGraph* graph
     NCCLCHECK(parse4H4P(system, graph));
   }
   if (graph->nChannels) return ncclSuccess;
+
 
   if ((graph->pattern == NCCL_TOPO_PATTERN_RING) && (system->type & RCCL_TOPO_4P2H_ROME) && (ngpus == system->nRanks)) {
     // limit single node max channels when searching ring graph on Rome
