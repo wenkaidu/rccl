@@ -92,7 +92,7 @@ ncclResult_t ncclTreeBasePostset(struct ncclComm* comm,
     int buff = c%x;
     int tempArray[256];
     for (int ko=0; ko < localRanks; ko++){
-      tempArray[ko] = treeGraph->treeBase[buff][ko];
+      tempArray[ko] = treeGraph->treeBase[buff][(ko+3)%localRanks];
     }
 
     struct ncclChannel* channel = comm->channels+c;
@@ -109,9 +109,9 @@ ncclResult_t ncclTreeBasePostset(struct ncclComm* comm,
           channel->tree.down[2] = -1;
         }
         else {
-          channel->tree.up = i >= localRanks/2 ?  tempArray[(i+1)%localRanks] : tempArray[i-1];
-          channel->tree.down[0] = i >= localRanks/2 ?  tempArray[i-1] : tempArray[i+1];
-          if ((i == localRanks/2) || (i == (localRanks/2 - 1))) {
+          channel->tree.up = i > localRanks/2 ?  tempArray[(i+1)%localRanks] : tempArray[i-1];
+          channel->tree.down[0] = i > localRanks/2 ?  tempArray[i-1] : tempArray[i+1];
+          if ((i == localRanks/2) || (i == (localRanks/2 + 1))) {
             channel->tree.down[0] = -1;
           }
           channel->tree.down[1] = -1;
