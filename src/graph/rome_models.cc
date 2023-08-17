@@ -618,15 +618,15 @@ static struct rcclRomeModel rome_model_81 = {
 };
 
 static struct rcclRomeModel rome_model_82 = {
-  .nGpus = 8, .nCpus = 4, .nNics = 8, .nLinks = 3,
-  .gpuIds = { 0x4a000, 0x50000, 0xa000, 0xf000, 0xca000, 0xd0000, 0x8a000, 0x90000, },
-  .nicIds = { 0x45000, 0x45000, 0x13000, 0x13000, 0xc5000, 0xc5000, 0x85000, 0x85000, },
+  .nGpus = 8, .nCpus = 4, .nNics = 0, .nLinks = 3,
+  .gpuIds = { 0x63000, 0x43000, 0x27000, 0x3000, 0xe3000, 0xc3000, 0xa3000, 0x83000, },
+  .nicIds = { },
   .gpuNuma = { 0, 0, 1, 1, 2, 2, 3, 3, },
-  .nicNuma = { 0, 0, 1, 1, 2, 2, 3, 3, },
+  .nicNuma = { },
   .connMatrix = { 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, },
-  .gdrLevel = { PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_SYS, PATH_PXB, PATH_PXB, },
-  .pattern = "22222222",
-  .ringBase = "5 4 7 6 2 3 0 1|1 0 3 2 6 7 4 5",
+  .gdrLevel = { },
+  .pattern = "20202020",
+  .ringBase = "",
   .options = "",
 };
 
