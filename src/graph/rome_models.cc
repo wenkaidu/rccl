@@ -581,6 +581,20 @@ static struct rcclRomeModel rome_model_81 = {
   .options = "noCpuCheck=1",
 };
 
+static struct rcclRomeModel rome_model_82 = {
+  .nGpus = 8, .nCpus = 2, .nNics = 0, .nLinks = 3,
+  .gpuIds = { 0x69000, 0x6c000, 0x70000, 0x73000, 0xe7000, 0xea000, 0xed000, 0xf0000, },
+  .nicIds = { },
+  .gpuNuma = { 0, 0, 0, 0, 1, 1, 1, 1, },
+  .nicNuma = { },
+  .connMatrix = { 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, },
+  .gdrLevel = { },
+  .pattern = "4040",
+  .ringBase = "0 1 2 3 4 5 6 7|0 2 5 7 4 6 1 3|0 3 1 6 4 7 5 2|0 7 6 5 4 3 2 1|0 1 2 3 4 5 6 7|0 2 5 7 4 6 1 3|0 3 1 6 4 7 5 2|0 7 6 5 4 3 2 1|0 1 2 3 4 5 6 7|0 2 5 7 4 6 1 3|0 3 1 6 4 7 5 2|0 7 6 5 4 3 2 1",
+  .options = "noCpuCheck=1,treeDefined=1",
+  .treeBase = "1 0 3 2 5 6 7 4|3 1 0 2 5 7 6 4|0 3 1 2 5 7 4 6|5 4 7 6 1 0 2 3|7 5 4 6 1 2 0 3|4 7 5 6 1 0 3 2|0 3 2 1 6 7 5 4|0 2 3 1 6 4 7 5|2 0 3 1 6 5 4 7|7 6 4 5 2 3 1 0|7 4 6 5 2 0 3 1|6 7 4 5 2 1 0 3",
+};
+
 static struct rcclRomeModel romeTopoModels[] = {
   rome_model_22,
   rome_model_25,
@@ -623,6 +637,7 @@ static struct rcclRomeModel romeTopoModels[] = {
   rome_model_79,
   rome_model_80,
   rome_model_81,
+  rome_model_82,
 };
 
 /* Parse user defined rings. Format is like :
