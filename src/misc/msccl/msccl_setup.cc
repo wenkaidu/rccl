@@ -284,9 +284,7 @@ static ncclResult_t hostToDevRedOp(
   nullptr
 
 #define MSCCL_KERNEL_ENTRY_DEVREDOP_TYPE(devredop, type) \
-  (void *)MSCCL_KERNEL_ENTRY_NAME(devredop, type, LL), \
-  (void *)MSCCL_KERNEL_ENTRY_NAME(devredop, type, LL128), \
-  (void *)MSCCL_KERNEL_ENTRY_NAME(devredop, type, Simple)
+  (void *)MSCCL_KERNEL_ENTRY_NAME(devredop, type, LL)
 
 #define MSCCL_KERNEL_ENTRY_DEVREDOP(devredop) \
   MSCCL_KERNEL_ENTRY_DEVREDOP_TYPE(devredop, int8_t), \
@@ -423,7 +421,7 @@ ncclResult_t mscclSetupKernel(const void* sendBuff, void* recvBuff, size_t count
 
   struct mscclWork *workPtr = status.workFifo + (workFifoSent & workFifoIdxMask);
   void *args[3] = {&comm->devComm, &devAlgo, &workPtr};
-  void *func = mscclKernelEntries[(opFull.op * ncclNumTypes + dataType) * NCCL_NUM_PROTOCOLS + hostAlgo->protocol];
+  void *func = mscclKernelEntries[opFull.op * ncclNumTypes + dataType];
   if (enableDoneEvent) {
     CUDACHECK(hipExtLaunchKernel(func, grid, block, args, 0, stream, NULL, comm->doneEvent, 0));
   } else {
