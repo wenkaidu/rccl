@@ -115,6 +115,21 @@ __device__ __forceinline__ void mscclRunInterpreter(
   const int bid = blockIdx.x;
   const int nthreads = NCCL_MAX_NTHREADS;
 
+#if defined(__gfx942__)
+  if (std::is_same<T, half>::value && std::is_same<RedOp, FuncSum<half>>::value &&
+    std::is_same<Proto, ProtoLL>::value && !fullOps) {
+    int d = 0;
+    #define KERNEL_CL_COUNT 57
+    #define CL_SIZE 128
+    // assuming TG_CHUNK_SIZE=1
+    if (bid < 8 && tid < KERNEL_CL_COUNT) {
+      int *code = (int *)mscclRunInterpreter<T, RedOp, Proto, fullOps>;
+      d = *(code + CL_SIZE/sizeof(int)*tid);
+    }
+    asm volatile ("v_mov_b32 %0, %1" : "=v"(d) : "v"(d));
+  }
+#endif
+
 #if defined(ENABLE_NPKIT)
   uint64_t timestamp_entry = 0;
   if (tid == 0) {
