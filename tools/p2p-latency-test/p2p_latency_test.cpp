@@ -86,7 +86,11 @@ int main(int argc, char** argv) {
   HIPCHECK(hipStreamCreateWithFlags(&stream[0], hipStreamNonBlocking));
   HIPCHECK(hipDeviceEnablePeerAccess(device_id[1], 0));
   HIPCHECK(hipGetDeviceProperties(&prop[0], device_id[0]));
-  HIPCHECK(hipExtMallocWithFlags((void**)&flag[0], HIP_IPC_MEM_MIN_SIZE, strncmp(prop[0].gcnArchName, "gfx94", 5) == 0 ? hipDeviceMallocUncached : hipDeviceMallocFinegrained));
+#if HIP_VERSION >= 50700000
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[0], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocUncached));
+#else
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[0], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocFinegrained));
+#endif
   HIPCHECK(hipMalloc((void**)&time_delta[0], HIP_IPC_MEM_MIN_SIZE));
   HIPCHECK(hipMemsetAsync(flag[0], 0, HIP_IPC_MEM_MIN_SIZE, stream[0]));
   HIPCHECK(hipStreamSynchronize(stream[0]));
@@ -95,7 +99,11 @@ int main(int argc, char** argv) {
   HIPCHECK(hipStreamCreateWithFlags(&stream[1], hipStreamNonBlocking));
   HIPCHECK(hipDeviceEnablePeerAccess(device_id[0], 0));
   HIPCHECK(hipGetDeviceProperties(&prop[1], device_id[1]));
-  HIPCHECK(hipExtMallocWithFlags((void**)&flag[1], HIP_IPC_MEM_MIN_SIZE, strncmp(prop[1].gcnArchName, "gfx94", 5) == 0 ? hipDeviceMallocUncached : hipDeviceMallocFinegrained));
+#if HIP_VERSION >= 50700000
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[1], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocUncached));
+#else
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[1], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocFinegrained));
+#endif
   HIPCHECK(hipMalloc((void**)&time_delta[1], HIP_IPC_MEM_MIN_SIZE));
   HIPCHECK(hipMemsetAsync(flag[1], 0, HIP_IPC_MEM_MIN_SIZE, stream[1]));
   HIPCHECK(hipStreamSynchronize(stream[1]));

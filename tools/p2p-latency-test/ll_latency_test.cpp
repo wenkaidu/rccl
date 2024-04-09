@@ -43,8 +43,13 @@ __device__ void storeLL(union LLFifoLine* dst, uint64_t val, uint32_t flag) {
   i4.flag1 = flag;
   i4.data2 = (val >> 32);
   i4.flag2 = flag;
+#if 0
+  __atomic_store_n(dst->v, i4.v[0], __ATOMIC_RELAXED);
+  __atomic_store_n(dst->v+1, i4.v[1], __ATOMIC_RELAXED);
+#else
   __builtin_nontemporal_store(i4.v[0], dst->v);
   __builtin_nontemporal_store(i4.v[1], dst->v+1);
+#endif
 }
 
 #define LL_SPINS_BEFORE_CHECK_ABORT 1000000
@@ -65,8 +70,13 @@ __device__ uint64_t readLL(union LLFifoLine* src, uint32_t flag, uint32_t* abort
 
   union LLFifoLine i4;
   do {
+#if 0
+    i4.v[0] = __atomic_load_n(src->v, __ATOMIC_RELAXED);
+    i4.v[1] = __atomic_load_n(src->v+1, __ATOMIC_RELAXED);
+#else
     i4.v[0] = __builtin_nontemporal_load(src->v);
     i4.v[1] = __builtin_nontemporal_load(src->v+1);
+#endif
     if (checkAbort(spins, abortFlag)) break;
   } while ((i4.flag1 != flag) || (i4.flag2 != flag));
   uint64_t val64 = (uint64_t)(i4.data1) + (((uint64_t)i4.data2) << 32);
@@ -147,7 +157,11 @@ int main(int argc, char** argv) {
   HIPCHECK(hipStreamCreateWithFlags(&stream[0], hipStreamNonBlocking));
   HIPCHECK(hipDeviceEnablePeerAccess(device_id[1], 0));
   HIPCHECK(hipGetDeviceProperties(&prop[0], device_id[0]));
-  HIPCHECK(hipExtMallocWithFlags((void**)&flag[0], HIP_IPC_MEM_MIN_SIZE, strncmp(prop[0].gcnArchName, "gfx94", 5) == 0 ? hipDeviceMallocUncached : hipDeviceMallocFinegrained));
+#if HIP_VERSION >= 50700000
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[0], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocUncached));
+#else
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[0], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocFinegrained));
+#endif
   HIPCHECK(hipHostMalloc ((void**)&time_delta[0], sizeof(uint64_t), hipHostMallocDefault));
   HIPCHECK(hipMalloc((void**)&abortFlag[0], sizeof(uint32_t)));
   HIPCHECK(hipMemsetAsync(flag[0], 0, HIP_IPC_MEM_MIN_SIZE, stream[0]));
@@ -158,7 +172,11 @@ int main(int argc, char** argv) {
   HIPCHECK(hipStreamCreateWithFlags(&stream[1], hipStreamNonBlocking));
   HIPCHECK(hipDeviceEnablePeerAccess(device_id[0], 0));
   HIPCHECK(hipGetDeviceProperties(&prop[1], device_id[1]));
-  HIPCHECK(hipExtMallocWithFlags((void**)&flag[1], HIP_IPC_MEM_MIN_SIZE, strncmp(prop[1].gcnArchName, "gfx94", 5) == 0 ? hipDeviceMallocUncached : hipDeviceMallocFinegrained));
+#if HIP_VERSION >= 50700000
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[1], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocUncached));
+#else
+  HIPCHECK(hipExtMallocWithFlags((void**)&flag[1], HIP_IPC_MEM_MIN_SIZE, hipDeviceMallocFinegrained));
+#endif
   HIPCHECK(hipHostMalloc((void**)&time_delta[1], sizeof(uint64_t), hipHostMallocDefault));
   HIPCHECK(hipMalloc((void**)&abortFlag[1], sizeof(uint32_t)));
   HIPCHECK(hipMemsetAsync(flag[1], 0, HIP_IPC_MEM_MIN_SIZE, stream[1]));
