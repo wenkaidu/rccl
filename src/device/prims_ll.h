@@ -113,6 +113,7 @@ private:
         __builtin_amdgcn_s_sleep(1);
         sendConnHeadCache = atomicAdd((unsigned long long *)sendConnHeadPtr, 0);
         if (checkAbort(spins, 1)) break;
+	if (spins == 0) traceData(__LINE__, threadIdx.x, sendConnHeadCache + NCCL_STEPS, sendConnHead + 1);
       }
       __asm__ __volatile__("s_wakeup");
       if (sendConnFifoPtr) {
@@ -169,6 +170,7 @@ private:
       npkitWaitRecvSpins++;
 #endif
       if (checkAbort(spins, 0)) break;
+      if (spins == 0) traceData(__LINE__, threadIdx.x, ((uint64_t)i4.flag1<<32)+i4.flag2, flag);
     } while ((i4.flag1 != flag) || (i4.flag2 != flag));
     uint64_t val64 = (uint64_t)(i4.data1) + (((uint64_t)i4.data2) << 32);
 #else
@@ -178,6 +180,7 @@ private:
       npkitWaitRecvSpins++;
 #endif
       if (checkAbort(spins, 0)) break;
+      if (spins == 0) traceData(__LINE__, threadIdx.x, ((uint64_t)i4.flag1<<32)+i4.flag2, flag);
     } while ((flag1 != flag) || (flag2 != flag));
     uint64_t val64 = data1 + (((uint64_t)data2) << 32);
 #endif
@@ -230,6 +233,7 @@ private:
       npkitWaitRecvSpins++;
 #endif
       if (checkAbort(spins, 0)) break;
+      if (spins == 0) traceData(__LINE__, threadIdx.x, ((uint64_t)line[i].flag1<<32)+line[i].flag2, flag);
     } while(line[i].flag1 != flag || line[i].flag2 != flag);
     uint64_t val64 = line[i].data1 + (((uint64_t)line[i].data2) << 32);
 

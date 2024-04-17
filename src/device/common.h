@@ -43,7 +43,7 @@
 #endif
 #ifdef ENABLE_COLLTRACE
   #define INC_COLL_TRACE \
-    uint32_t pos = atomicAdd(&ncclShmem.collTraceTail->tail, 1)%COLLTRACE_NUM_ITEMS; \
+    uint32_t pos = atomicInc(&ncclShmem.collTraceTail->tail, COLLTRACE_NUM_ITEMS); \
     struct ncclCollTrace* collTrace = ncclShmem.collTrace+pos; \
     collTrace->timeStamp = wall_clock64(); \
     collTrace->bid = blockIdx.x;
@@ -68,14 +68,14 @@
       collTrace->p2p[1].nWarps = p2pElems[1].nWarps; \
       collTrace->p2p[1].warpStart = p2pElems[1].warpStart; \
       collTrace->p2p[1].peer = p2pElems[1].p2pType == ncclWorkP2pTypeSend ? (uint16_t)(p2pElems[1].peer) : -1; \
-      collTrace->type = (launch_type) | ncclCollTraceP2pElemType; \
+      __atomic_store_n(&collTrace->type, (launch_type) | ncclCollTraceP2pElemType, __ATOMIC_RELAXED); \
     } else if (ncclShmem.work.header.type == ncclWorkTypeColl) { \
       struct ncclWorkElem *elems = ncclShmem.work.elems; \
       collTrace->opCount = elems[0].opCount; \
       collTrace->coll.nWarps = elems[0].nWarps; \
       collTrace->coll.bid = elems[0].bid; \
       collTrace->coll.nChannels = elems[0].nChannels; \
-      collTrace->type = (launch_type) | ncclCollTraceCollElemType; \
+      __atomic_store_n(&collTrace->type, (launch_type) | ncclCollTraceCollElemType, __ATOMIC_RELAXED); \
     } \
   }
   #define traceKernelEnd(end_type)  { \
@@ -88,7 +88,7 @@
       struct ncclWorkElem *elems = ncclShmem.work.elems; \
       collTrace->opCount = elems[0].opCount; \
     } \
-    collTrace->type = end_type; \
+    __atomic_store_n(&collTrace->type, end_type, __ATOMIC_RELAXED); \
   }
   #define traceData(data2, data4, data8_0, data8_1) { \
     INC_COLL_TRACE \
@@ -96,7 +96,7 @@
     collTrace->data_0 = data4; \
     collTrace->opCount = data8_0; \
     collTrace->data_1 = data8_1; \
-    collTrace->type = ncclCollTraceDataType; \
+    __atomic_store_n(&collTrace->type, ncclCollTraceDataType, __ATOMIC_RELAXED); \
   }
 #else
 #define traceKernelLaunch(launch_type)
