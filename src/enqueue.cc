@@ -1773,6 +1773,7 @@ static ncclResult_t initCollWorkElemReg(struct ncclComm* comm, struct ncclWorkEl
 }
 
 NCCL_PARAM(NvlsTreeChunkSize, "NVLSTREE_MAX_CHUNKSIZE", -2);
+NCCL_PARAM(OverrideChunkSize, "OVERRIDE_CHUNKSIZE", -2);
 
 static ncclResult_t computeCollChunkInfo(struct ncclInfo* collInfo, size_t nBytes, int nChannels) {
   int stepSize = collInfo->comm->buffSizes[collInfo->protocol] / NCCL_STEPS;
@@ -1780,6 +1781,8 @@ static ncclResult_t computeCollChunkInfo(struct ncclInfo* collInfo, size_t nByte
   int sliceSteps = (collInfo->protocol == NCCL_PROTO_SIMPLE && collInfo->algorithm == NCCL_ALGO_RING) ? collInfo->sliceSteps : 1;
   int chunkSize = stepSize * chunkSteps;
 
+  INFO(NCCL_COLL,"%s: chunkSize %d (override %ld) stepSize %d", __func__, chunkSize, ncclParamOverrideChunkSize(), stepSize);
+  if (ncclParamOverrideChunkSize() != -2) collInfo->chunkSize = ncclParamOverrideChunkSize();
   if (collInfo->protocol == NCCL_PROTO_LL) chunkSize /= 2;
   if (collInfo->protocol == NCCL_PROTO_LL128) chunkSize = (chunkSize / NCCL_LL128_LINEELEMS) * NCCL_LL128_DATAELEMS;
 
