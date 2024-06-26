@@ -176,10 +176,6 @@ __device__ __forceinline__ void mscclRunInterpreter(
 #endif
   __synclds(); // publish shmem
 
-  if (fullOps && tid == 0) {
-    traceData(__LINE__, mscclShmem.work.fnIndex, (uint64_t)mscclShmem.work.sendBuff, 0);
-  }
-
   if (tid == 0)
     *mscclShmem.work.workFifoDone = mscclShmem.work.workFifoDoneAck;
 
@@ -196,201 +192,24 @@ __device__ __forceinline__ void mscclRunInterpreter(
   }
 #endif
 
-  // User pointers for primitives
-  T* thisInput = (T*)mscclShmem.work.sendBuff;
-  T* thisOutput = (T*)mscclShmem.work.recvBuff;
-  T* thisScratch = (T*)mscclShmem.work.scratchBuffer;
-  int recvPeer = mscclShmem.mscclTB.recvPeer;
-  int sendPeer = mscclShmem.mscclTB.sendPeer;
-
-  const ssize_t chunkSize = int(Proto::calcBytePerStep()/sizeof(T) * (Proto::Id == NCCL_PROTO_SIMPLE ? MSCCL_CHUNKSTEPS : 1));
-  int minChunkSize;
-  if (Proto::Id == NCCL_PROTO_LL)
-    minChunkSize = nthreads*(Proto::calcBytePerGrain()/sizeof(T));
-  if (Proto::Id == NCCL_PROTO_LL128) {
-    // We should not need the final /2 but it makes performance much, much smoother. Might be a bug somewhere.
-    minChunkSize = nthreads*(Proto::calcBytePerGrain()/sizeof(T))/2;
-  }
-
-  RedOp redFn(mscclShmem.work.redOpArg);
-  Primitives<T, RedOp, FanAsymmetric<1,1>, 1, Proto, 0> prims
-    (tid, nthreads, &recvPeer, &sendPeer, thisInput, thisOutput, mscclShmem.work.redOpArg);
-
-#if defined(ENABLE_NPKIT)
-  if (tid == 0) {
-    prims.npKitCtxIdx = npKitCtxIdx;
-  }
-#endif
-
-  const ssize_t sizePerMscclChunk = mscclShmem.work.sizePerMscclChunk;
-  uint32_t maxAllowedCount = mscclShmem.work.maxAllowedCount;
-
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RUN_ENTRY)
   if (tid == 0) {
     NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RUN_ENTRY, mscclShmem.work.sizePerMscclChunk*mscclShmem.work.nChunksPerLoop, xcc_id, timestamp_entry);
   }
 #endif
 
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_INIT_ENTRY)
-  if (tid == 0) {
-    NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_INIT_ENTRY, 0, xcc_id, timestamp_entry);
-  }
-#endif
-
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_INIT_EXIT)
-  if (tid == 0) {
-    NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_INIT_EXIT, 0, xcc_id, NPKIT_GET_GPU_TIMESTAMP());
-  }
-#endif
-
-  // msccl flags all start out with 0. this is used as a part of the flag to make sure different work items deal with different synchronization flags
-  // this still needs more work. when we make a way around the queue, the flag might have been set to undesired values. will be fixed in subsequent versions.
-  const int64_t workIndex = mscclShmem.work.workIndex;
-  volatile struct mscclFlag* mscclFlags = mscclShmem.work.syncFlags;
-  for (ssize_t gridOffset = 0, iter = 0; gridOffset < sizePerMscclChunk; gridOffset += chunkSize, iter++) {
-    ssize_t realChunkSize;
-    if (Proto::Id == NCCL_PROTO_SIMPLE) {
-      realChunkSize = min(chunkSize, sizePerMscclChunk-gridOffset);
-      realChunkSize = roundUp(realChunkSize, nthreads*sizeof(uint64_t)/sizeof(T));
-    }
-    else
-      realChunkSize = min(chunkSize, divUp(sizePerMscclChunk-gridOffset, minChunkSize)*minChunkSize);
-    realChunkSize = int(realChunkSize);
-    int nelem = min(realChunkSize, sizePerMscclChunk-gridOffset);
-
-    ssize_t srcOffset, dstOffset;
-    T *srcPointer, *dstPointer;
-    int step = 0;
-    for (int i = 0; i < mscclShmem.mscclTB.nSteps; i++){
-      struct mscclTransmission* t = &mscclShmem.mscclTB.transmissions[i];
-      // first wait if there is a dependence
-      int16_t numDependencies = t->numDependencies;
-      if (numDependencies > 0){
-        if (tid < numDependencies) {
-          int16_t dependentPointer = t->dependencePointer;
-          int8_t dependentBid = mscclShmem.mscclTB.dependentBid[dependentPointer+tid];
-          int16_t dependentStep = mscclShmem.mscclTB.dependentStep[dependentPointer+tid];
-          uint64_t goalFlag = COMPUTE_FLAG(workIndex, iter, dependentStep);
-          while (true){
-            uint64_t curFlag = __atomic_load_n(&(mscclFlags + dependentBid)->flag, (t->srcBuffer != MSCCL_OUTPUT_BUFFER) ? __ATOMIC_RELAXED : __ATOMIC_ACQUIRE);
-            if (curFlag >= goalFlag && GET_WORKINDEX_FROM_FLAG(curFlag) == workIndex) break;
-          }
-        }
-        step += numDependencies-1;
-        barrier(nthreads);
-      }
-
-      srcPointer = (t->srcBuffer == MSCCL_INPUT_BUFFER) ? thisInput : ((t->srcBuffer == MSCCL_OUTPUT_BUFFER) ? thisOutput : thisScratch);
-      dstPointer = (t->dstBuffer == MSCCL_INPUT_BUFFER) ? thisInput : ((t->dstBuffer == MSCCL_OUTPUT_BUFFER) ? thisOutput : thisScratch);
-      prims.setDataPtrs(srcPointer, dstPointer);
-
-      int count = t->count;
-      for (int c = 0; c < count; c += maxAllowedCount) {
-        srcOffset = gridOffset + (ssize_t) (t->srcOffset+c) * sizePerMscclChunk;
-        dstOffset = gridOffset + (ssize_t) (t->dstOffset+c) * sizePerMscclChunk;
-        int thisCount = min(maxAllowedCount, count - c);
-        int thisNelem = nelem * thisCount;
-        if (t->type == MSCCL_SEND) {
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_SEND_ENTRY)
-            if (tid == 0) {
-              NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_SEND_ENTRY, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-            }
-
-#endif
-          prims.send(srcOffset, thisNelem); // LL.send is the only situation where there is no barrier at the end.
-
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_SEND_EXIT)
-            if (tid == 0) {
-              NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_SEND_EXIT, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-            }
-#endif
-        }
-        else if (t->type == MSCCL_RECV) {
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RECV_ENTRY)
-            if (tid == 0) {
-              NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RECV_ENTRY, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-            }
-#endif
-          prims.recv(dstOffset, thisNelem);
-
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RECV_EXIT)
-            if (tid == 0) {
-              NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RECV_EXIT, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-            }
-#endif
-        }
-        else if (t->type == MSCCL_REDUCE) {
-          int numReductions = t->numReductions;
-          int currIdx = tid;
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_REDUCE_ENTRY)
-          if (tid == 0) {
-            NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_REDUCE_ENTRY, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-          }
-#endif
-          dstOffset = gridOffset + (ssize_t) (t->dstOffset+c) * sizePerMscclChunk;
-          // process 16-byte packed elements
-          const int elemsPerPack = 16/sizeof(T);
-          while (currIdx < thisNelem/elemsPerPack) {
-            mscclReduce<T, RedOp, 16>(c, numReductions, currIdx, sizePerMscclChunk, redFn, t, gridOffset, srcOffset, dstOffset, srcPointer, dstPointer);
-            currIdx += nthreads;
-          }
-          // process remaining elements
-          currIdx = tid + (thisNelem/elemsPerPack)*elemsPerPack;
-          if (currIdx < thisNelem) {
-            mscclReduce<T, RedOp, sizeof(T)>(c, numReductions, currIdx, sizePerMscclChunk, redFn, t, gridOffset, srcOffset, dstOffset, srcPointer, dstPointer);
-          }
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_REDUCE_EXIT)
-          if (tid == 0) {
-            NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_REDUCE_EXIT, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-          }
-#endif
-          barrier(nthreads);
-          if (c == 0) step += (numReductions-1); // only advance step once!
-        }
-        else if (fullOps && t->type == MSCCL_RECV_COPY_SEND)
-          prims.recvCopySend(dstOffset, thisNelem);
-        else if (fullOps && t->type == MSCCL_RECV_REDUCE_SEND)
-          prims.recvReduceSend(srcOffset, thisNelem);
-        else if (fullOps && t->type == MSCCL_RECV_REDUCE_COPY_SEND)
-          prims.recvReduceCopySend(srcOffset, dstOffset, thisNelem);
-        else if (fullOps && t->type == MSCCL_RECV_REDUCE_COPY) {
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RECV_REDUCE_COPY_ENTRY)
-          if (tid == 0) {
-            NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RECV_REDUCE_COPY_ENTRY, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-          }
-#endif
-          prims.recvReduceCopy(srcOffset, dstOffset, thisNelem);
-#if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RECV_REDUCE_COPY_EXIT)
-          if (tid == 0) {
-            NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RECV_REDUCE_COPY_EXIT, thisNelem*sizeof(T), 0, NPKIT_GET_GPU_TIMESTAMP());
-          }
-#endif
-        }
-        else if (t->type == MSCCL_LOCAL_COPY)
-          prims.localCopy(srcPointer+srcOffset, dstPointer+dstOffset, thisNelem);
-        else
-          return;
-      }
-      if (t->hasDependence && tid == nthreads-1)
-        __atomic_store_n(&mscclFlags[bid].flag, (uint64_t) COMPUTE_FLAG(workIndex, iter, step), (t->dstBuffer != MSCCL_SCRATCH_BUFFER) ? __ATOMIC_RELEASE : __ATOMIC_RELAXED);
-      step++;
-    }
-  }
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RUN_EXIT)
   if (tid == 0) {
     NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RUN_EXIT, mscclShmem.work.sizePerMscclChunk*mscclShmem.work.nChunksPerLoop, xcc_id, NPKIT_GET_GPU_TIMESTAMP());
   }
 #endif
+
 #if defined(ENABLE_NPKIT)
   __synclds();
   NpKitEventCollectContext* ctx = ncclShmem.comm.npKitEventCollectContexts + npKitCtxIdx;
   copyToShmem16(tid, ctx->event_buffer+ctx->event_buffer_head, ncclShmem.event_buffer, sizeof(NpKitEvent)*ncclShmem.event_buffer_head);
   if (tid == 0) ctx->event_buffer_head += ncclShmem.event_buffer_head;
 #endif
-
-  if (fullOps && tid == 0) {
-    traceData(__LINE__, mscclShmem.work.fnIndex, (uint64_t)mscclShmem.work.sendBuff, 0);
-  }
 }
 
 #define MSCCL_IMPL_KERNEL_ENTRY_FUNC_DEVREDOP_TYPE(devredop, type, fullOps) \
