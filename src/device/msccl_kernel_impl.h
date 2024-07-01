@@ -197,6 +197,9 @@ __device__ __forceinline__ void mscclRunInterpreter(
   }
 #endif
 
+  __builtin_amdgcn_s_sleep(127);
+  __builtin_amdgcn_s_sleep(127);
+
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_EVENT_MSCCL_RUN_EXIT)
   if (tid == 0) {
     NpKit::CollectGpuEventLDS(NPKIT_EVENT_MSCCL_RUN_EXIT, mscclShmem.work.sizePerMscclChunk*mscclShmem.work.nChunksPerLoop, xcc_id, NPKIT_GET_GPU_TIMESTAMP());
