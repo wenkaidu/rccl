@@ -33,6 +33,9 @@
 
 struct LineItem
 {
+  char   date[32];
+  int    minutes;
+  char   seconds[32];
   char   hostname[MPI_MAX_PROCESSOR_NAME];
   int    pid;
   int    tid;

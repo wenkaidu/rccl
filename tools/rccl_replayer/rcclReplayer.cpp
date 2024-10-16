@@ -328,13 +328,13 @@ void ParseCollectives(char const* logFilename, bool isFirstRank, CollectiveCalls
 bool ParseLineItem(char const* line, LineItem& li)
 {
   return sscanf(line,
-                "%[^:]:%d:%d [%d] NCCL INFO %[^:]: opCount %x sendbuff %s "
+                "%[^:]:%d:%s %[^:]:%d:%d [%d] NCCL INFO %[^:]: opCount %x sendbuff %s "
                 "recvbuff %s count %lu datatype %d op %d root %d comm %s "
                 "[nranks=%d] stream %p task %d globalrank %d",
-                li.hostname, &li.pid, &li.tid, &li.cudaDev, li.opName,
+                li.date, &li.minutes, li.seconds, li.hostname, &li.pid, &li.tid, &li.cudaDev, li.opName,
                 &li.opCount, li.sendbuff, li.recvbuff,
                 &li.count, &li.datatype, &li.op, &li.root, li.comm,
-                &li.nRanks, &li.stream, &li.task, &li.globalRank) == 17;
+                &li.nRanks, &li.stream, &li.task, &li.globalRank) == 20;
 }
 
 double ReplayRccl(CollectiveCalls const& cc, int groupIdx)
