@@ -131,8 +131,10 @@ private:
     }
 
     if (flags & (Recv*RoleWaitRecv | Send*RoleWaitSend)) {
-      if (flags & ConnFifoEnabled)
+      if (flags & ConnFifoEnabled) {
         connFifo[step%NCCL_STEPS].size = nelts*sizeof(T);
+        traceData(__LINE__, threadIdx.x, int(connStepCache + (isSendNotRecv ? NCCL_STEPS : 0)), connFifo[step%NCCL_STEPS].size);
+      }
 
       void **ptrs = isSendNotRecv ? (ncclShmem.groups[group].dsts + Dst)
                                   : (ncclShmem.groups[group].srcs + Src);
@@ -336,6 +338,8 @@ private:
 
           constexpr int PreOpSrcs = SrcBuf != Input ? 0 :
                                     DirectRecv*MaxRecv == NCCL_MAX_DIRECT_ARITY ? (1+NCCL_MAX_DIRECT_ARITY) : 1;
+          if (threadIdx.x == 0x7f || threadIdx.x == 0xff)
+            traceData(__LINE__, threadIdx.x, (uint64_t)(ncclShmem.groups[group].srcs[0]), (uint64_t)(ncclShmem.groups[group].dsts[0]));
           reduceCopy<Unroll, RedOp, T,
             MultimemSrcs, Recv+Src, Recv*MaxRecv+Src,
             MultimemDsts, Send+Dst, Send*MaxSend+Dst, PreOpSrcs>
@@ -343,7 +347,8 @@ private:
              Recv*fan.nrecv()+Src, ncclShmem.groups[group].srcs,
              Send*fan.nsend()+Dst, ncclShmem.groups[group].dsts,
              workSize);
-
+          if (threadIdx.x == 0x7f || threadIdx.x == 0xff)
+            traceData(__LINE__, threadIdx.x, (uint64_t)(ncclShmem.groups[group].srcs[0]), (uint64_t)(ncclShmem.groups[group].dsts[0]));
 #if defined(ENABLE_NPKIT) && defined(ENABLE_NPKIT_PRIM_COLLECT_DATA_PROCESS_TIME)
           if (tid == 0) {
             npKitDataProcessExitTime = NPKIT_GET_GPU_TIMESTAMP();
