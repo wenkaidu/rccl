@@ -43,7 +43,7 @@ class Primitives<
   Fan fan;
   int index; // Peer index I'm responsible for
   int flags;
-  int group;
+  const int group;
   uint64_t step;
   struct ncclConnFifo* connFifo = NULL;
   T* connEltsFifo;
@@ -56,6 +56,7 @@ class Primitives<
   uint32_t* next_hdp_reg;
   void*    mhandle;
   void*    netDeviceHandle;
+  int repeat;
 
 #if defined(ENABLE_NPKIT)
 public:
@@ -116,12 +117,16 @@ private:
     if (((flags & (Recv*RoleWaitRecv)) && !noRecvWait) ||
         ((flags & (Send*RoleWaitSend)) && !noSendWait)) {
       int spins = 0;
+      repeat = 50;
       while (connStepCache + (isSendNotRecv ? NCCL_STEPS : 0) < step + StepPerSlice) {
         __builtin_amdgcn_s_sleep(1);
         connStepCache = loadStepValue(connStepPtr);
         if (checkAbort(spins)) break;
         //if (spins == 0) printf("r=%d b=%d t=%d SPUN OUT got=%d want=%d\n", ncclShmem.comm.rank, blockIdx.x, threadIdx.x, int(connStepCache + (isSendNotRecv ? NCCL_STEPS : 0)), int(step+StepPerSlice));
-        if (spins == 0) traceData(__LINE__, threadIdx.x, int(connStepCache + (isSendNotRecv ? NCCL_STEPS : 0)), int(step+StepPerSlice));
+        if (spins == 0 && repeat > 0) {
+          repeat --;
+          traceData(__LINE__, threadIdx.x, int(connStepCache + (isSendNotRecv ? NCCL_STEPS : 0)), int(step+StepPerSlice));
+        }
       }
       __asm__ __volatile__("s_wakeup");
     }
@@ -369,6 +374,7 @@ private:
     #pragma unroll 1
     while (slice < SlicePerChunk) {
       sliceSize = sliceSize < nelem-offset ? sliceSize : nelem-offset;
+      if (tid%WARP_SIZE == 0) traceData(__LINE__, threadIdx.x, slice, sliceSize);
       { // Only workers could have Wait roles so we know the slice must be empty
         // since we've exited the loop above.
         waitPeer<DirectRecv, DirectSend, Recv, Send, Src, Dst>(0, 0, 0, 0);
