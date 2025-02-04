@@ -340,6 +340,19 @@ __forceinline__ __device__ void ncclKernelMain(struct ncclDevComm* comm, struct 
       if (tid < NCCL_MAX_WORK_ELEMENTS_REG) ncclRedopPtrDeref(&ncclShmem.work.regElems[tid].elem);
     }
     __synclds();
+    switch (tid/WARP_SIZE) {
+      case 1:
+        if (tid < WARP_SIZE + NCCL_MAX_GROUPS)
+          ncclShmem.groups[tid-WARP_SIZE].barrier = 0;
+        break;
+      case 2:
+        if (tid < 2*WARP_SIZE + NCCL_MAX_GROUPS*NCCL_MAX_GROUPS)
+          ncclShmem.groups[(tid-2*WARP_SIZE)/NCCL_MAX_GROUPS].barrier_next[(tid-2*WARP_SIZE)%NCCL_MAX_GROUPS] = 0;
+        break;
+      default:
+        break;
+    }
+    __synclds();
 
     if (tid == 0) __insert_timestamp(__LINE__);
 
@@ -361,6 +374,7 @@ __forceinline__ __device__ void ncclKernelMain(struct ncclDevComm* comm, struct 
 
     int workIxNext = ncclShmem.work.header.workNext;
     __synclds();
+
     if (ncclShmem.work.header.isLast) break;
 
     copyToShmem16(tid, &ncclShmem.work, workHead + workIxNext, sizeof(ncclWork));
