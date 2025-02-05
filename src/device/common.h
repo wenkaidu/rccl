@@ -113,7 +113,6 @@ struct ncclShmemGroup {
   void* srcs[NCCL_MAX_ARITY+1];
   void* dsts[NCCL_MAX_ARITY+1];
   uint64_t barrier;
-  uint64_t barrier_next[NCCL_MAX_GROUPS];
   union {
     unpackGroupShmem unpack;
   } devicePlugin;
@@ -266,8 +265,6 @@ __forceinline__ __device__ void ncclKernelMain(struct ncclDevComm* comm, struct 
       ncclShmem.groups[tid-WARP_SIZE].barrier = 0;
     break;
   case 2:
-    if (tid < 2*WARP_SIZE + NCCL_MAX_GROUPS*NCCL_MAX_GROUPS)
-      ncclShmem.groups[(tid-2*WARP_SIZE)/NCCL_MAX_GROUPS].barrier_next[(tid-2*WARP_SIZE)%NCCL_MAX_GROUPS] = 0;
     break;
   case 3:
     /* set abort flag to 0 */
@@ -344,10 +341,6 @@ __forceinline__ __device__ void ncclKernelMain(struct ncclDevComm* comm, struct 
       case 1:
         if (tid < WARP_SIZE + NCCL_MAX_GROUPS)
           ncclShmem.groups[tid-WARP_SIZE].barrier = 0;
-        break;
-      case 2:
-        if (tid < 2*WARP_SIZE + NCCL_MAX_GROUPS*NCCL_MAX_GROUPS)
-          ncclShmem.groups[(tid-2*WARP_SIZE)/NCCL_MAX_GROUPS].barrier_next[(tid-2*WARP_SIZE)%NCCL_MAX_GROUPS] = 0;
         break;
       default:
         break;
