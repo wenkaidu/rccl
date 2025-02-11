@@ -405,8 +405,8 @@ static ncclResult_t commFree(ncclComm_t comm) {
     else
       ncclCommThreadMain((void *)comm);
   }
-  NCCLCHECK(ncclCudaHostFree((void *)comm->collTrace));
-  NCCLCHECK(ncclCudaHostFree((void *)comm->collTraceTail));
+  NCCLCHECK(ncclCudaFree((void *)comm->collTrace));
+  NCCLCHECK(ncclCudaFree((void *)comm->collTraceTail));
 #endif
 
   free(comm->peerInfo);
@@ -582,8 +582,8 @@ static ncclResult_t commAlloc(struct ncclComm* comm, struct ncclComm* parent, in
   comm->dmaBufSupport = (dmaBufSupported(comm) == ncclSuccess) ? true : false;
 
 #ifdef ENABLE_COLLTRACE
-  NCCLCHECK(ncclCudaHostCalloc(&comm->collTraceTail, MAXCHANNELS));
-  NCCLCHECK(ncclCudaHostCalloc(&comm->collTrace, COLLTRACE_NUM_ITEMS*MAXCHANNELS));
+  NCCLCHECK(ncclCudaCalloc(&comm->collTraceTail, MAXCHANNELS));
+  NCCLCHECK(ncclCudaCalloc(&comm->collTrace, COLLTRACE_NUM_ITEMS*MAXCHANNELS));
   comm->collTraceExit = 0;
   comm->collTraceEnabled = false; // we can enable colltrace without starting a thread
   if ((ncclDebugLevel >= NCCL_LOG_INFO) && rcclParamKernelCollTraceEnable()) {
