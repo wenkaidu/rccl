@@ -369,9 +369,9 @@ __forceinline__ __device__ void ncclKernelMain(struct ncclDevComm* comm, struct 
     }
 
     int workIxNext = ncclShmem.work.header.workNext;
-    __synclds();
 
     if (ncclShmem.work.header.isLast) break;
+    __synclds();
 
     copyToShmem16(tid, &ncclShmem.work, workHead + workIxNext, sizeof(ncclWork));
 
