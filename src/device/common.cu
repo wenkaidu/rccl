@@ -17,17 +17,17 @@ struct RunWorkNop {
   __device__ void run(ncclWork *w) {}
 };
 
-__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernel_Generic(struct ncclDevComm* comm, struct channelMasks channelMask, struct ncclWork* workHead) {
+__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernel_Generic(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead) {
   ncclKernelMain<-1, RunWorkNop, false, 2>(comm, channelMask, workHead);
 }
-__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernel_Generic_4(struct ncclDevComm* comm, struct channelMasks channelMask, struct ncclWork* workHead) {
+__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernel_Generic_4(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead) {
   ncclKernelMain<-1, RunWorkNop, false, 4>(comm, channelMask, workHead);
 }
 #ifdef ENABLE_COLLTRACE
-__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernelDebug_Generic(struct ncclDevComm* comm, struct channelMasks channelMask, struct ncclWork* workHead) {
+__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernelDebug_Generic(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead) {
   ncclKernelMain<-1, RunWorkNop, true, 2>(comm, channelMask, workHead);
 }
-__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernelDebug_Generic_4(struct ncclDevComm* comm, struct channelMasks channelMask, struct ncclWork* workHead) {
+__launch_bounds__(NCCL_MAX_NTHREADS, 1) __global__ void ncclDevKernelDebug_Generic_4(struct ncclDevComm* comm, uint64_t channelMask, struct ncclWork* workHead) {
   ncclKernelMain<-1, RunWorkNop, true, 4>(comm, channelMask, workHead);
 }
 #endif

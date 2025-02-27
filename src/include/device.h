@@ -62,7 +62,7 @@ union ncclLLFifoLine {
 
 #define WARP_SIZE warpSize
 
-#define MAXCHANNELS 128
+#define MAXCHANNELS 32
 #define CHANNEL_LIMIT 16
 
 #define NCCL_MAX_NTHREADS 256
@@ -207,7 +207,7 @@ struct ncclNvls {
 #define NCCL_MAX_ARITY NCCL_MAX_DIRECT_ARITY
 #endif
 
-#define NCCL_MAX_CONNS 3
+#define NCCL_MAX_CONNS 2
 struct ncclChannelPeer {
   struct ncclConnector send[NCCL_MAX_CONNS];
   struct ncclConnector recv[NCCL_MAX_CONNS];

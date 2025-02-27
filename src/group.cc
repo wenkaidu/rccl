@@ -121,7 +121,6 @@ ncclResult_t ncclPreconnectFunc(struct ncclAsyncJob* job_) {
   CUDACHECK(cudaSetDevice(comm->cudaDev));
   if (CPU_COUNT(&comm->cpuAffinity)) sched_setaffinity(0, sizeof(cpu_set_t), &comm->cpuAffinity);
   NCCLCHECK(ncclTransportP2pSetup(comm, NULL, 1));
-  if (comm->p2pNet) NCCLCHECK(ncclTransportP2pSetup(comm, NULL, NCCL_CONN_IDX_P2P_NET));
   return ncclSuccess;
 }
 
@@ -226,10 +225,8 @@ static void groupCleanup(struct ncclComm** groupCommHeadPtr, struct ncclComm** g
     for (int i = 0; i < comm->nRanks; i++) {
       comm->tasks.peers[i].sendSeen = false;
       comm->tasks.peers[i].recvSeen = false;
-      for (int j = 0; j < MAXCHANNELS/64; j++) {
-      	comm->connectSend[i].masks[j] = 0UL;
-      	comm->connectRecv[i].masks[j] = 0UL;
-      }
+      comm->connectSend[i] = 0UL;
+      comm->connectRecv[i] = 0UL;
     }
     comm->unlaunchedPlansHead = nullptr;
     // Reclaim abandoned kernel plan memory. Note ncclWork structs were already

@@ -184,10 +184,6 @@ struct ncclCollnetHandleList {
   struct ncclProxyConnector* proxyconn;
 };
 
-struct channelMasks {
-  uint64_t masks[MAXCHANNELS/64];
-};
-
 struct ncclKernelPlan {
   // A kernel plan is also a callback that reclaims itself. Hence this must
   // be the first member.
@@ -201,7 +197,7 @@ struct ncclKernelPlan {
   void *kernelFn;
   int channelUbound; // only channels c < channelUbound are present
   int channelCount; // number of channels present
-  struct channelMasks channelMask;
+  uint64_t channelMask; // which channels are present, channelCount == popcount(channelMask)
   bool hasProxyOps; // does any channel have a non-empty proxyOpQueue
   int threadPerBlock;
   // workHeap fields are null until uploadWorkFifo() or preparePersistentKernel()
@@ -246,8 +242,8 @@ struct ncclComm {
   ncclCollNet_t* ncclCollNet;
   void* bootstrap;
   // Bitmasks for ncclTransportP2pSetup
-  struct channelMasks* connectSend;
-  struct channelMasks* connectRecv;
+  uint64_t* connectSend;
+  uint64_t* connectRecv;
 
   uint64_t magic; // Magic number for all network communication. Not a security key -- only goal is to detect mismatches.
 
@@ -320,7 +316,6 @@ struct ncclComm {
   // Flags for enable P2P NET
   uint32_t p2pNet;
   uint32_t useIntraNet;
-  bool hasFineGrain;
 
   // Device side of the communicator (for cudaFree's)
   struct ncclDevComm* devComm; // actually = &ncclDevCommAndChannels::comm

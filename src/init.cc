@@ -458,8 +458,8 @@ static ncclResult_t commFree(ncclComm_t comm) {
 }
 
 RCCL_PARAM(CliqueIgnoreTopo, "CLIQUE_IGNORE_TOPO", 0);
-RCCL_PARAM(P2pNetDisable, "P2P_NET_DISABLE", 0);
-RCCL_PARAM(PivotAlltoallEnable, "PIVOT_ALLTOALL_ENABLE", 1);
+RCCL_PARAM(P2pNetDisable, "P2P_NET_DISABLE", 1);
+RCCL_PARAM(PivotAlltoallEnable, "PIVOT_ALLTOALL_ENABLE", 0);
 RCCL_PARAM(LL128ForceEnable, "LL128_FORCE_ENABLE", 0);
 NCCL_PARAM(AggChannelSize, "AGG_CHANNEL_SIZE", -2);
 NCCL_PARAM(DisableGraphHelper, "GRAPH_HELPER_DISABLE", 0);
@@ -583,8 +583,8 @@ static ncclResult_t commAlloc(struct ncclComm* comm, struct ncclComm* parent, in
   comm->groupNext = reinterpret_cast<struct ncclComm*>(0x1);
   comm->preconnectNext = reinterpret_cast<struct ncclComm*>(0x1);
 
-  static_assert(MAXCHANNELS <= sizeof(*comm->connectSend)*8, "comm->connectSend must have enough bits for all channels");
-  static_assert(MAXCHANNELS <= sizeof(*comm->connectRecv)*8, "comm->connectRecv must have enough bits for all channels");
+  //static_assert(MAXCHANNELS <= sizeof(*comm->connectSend)*8, "comm->connectSend must have enough bits for all channels");
+  //static_assert(MAXCHANNELS <= sizeof(*comm->connectRecv)*8, "comm->connectRecv must have enough bits for all channels");
   NCCLCHECK(ncclCalloc(&comm->connectSend, comm->nRanks*NCCL_MAX_CONNS));
   NCCLCHECK(ncclCalloc(&comm->connectRecv, comm->nRanks*NCCL_MAX_CONNS));
 
@@ -778,7 +778,6 @@ static ncclResult_t fillInfo(struct ncclComm* comm, struct ncclPeerInfo* info, u
   if (hipExtMallocWithFlags((void**)&ptr, sizeof(int), hipDeviceMallocFinegrained) == hipSuccess) {
 #endif
     CUDACHECK(hipFree(ptr));
-    info->hasFineGrain = true;
     // GPU supports GDR if DMABUF is supported
     if (dmaBufSupported(comm) == ncclSuccess)
       info->gdrSupport = 1;
@@ -786,10 +785,8 @@ static ncclResult_t fillInfo(struct ncclComm* comm, struct ncclPeerInfo* info, u
       NCCLCHECK(ncclGpuGdrSupport(comm, &info->gdrSupport));
   }
   else {
-    info->hasFineGrain = false;
     info->gdrSupport = 0;
   }
-  comm->hasFineGrain = info->hasFineGrain;
 
   info->comm = comm;
   info->cudaCompCap = comm->minCompCap = comm->maxCompCap = comm->compCap;
@@ -1214,10 +1211,6 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, struct ncclComm* p
   struct allGatherInfo {
     struct graphInfo graphInfo[NCCL_NUM_ALGORITHMS];
     struct ncclTopoRanks topoRanks;
-    int nc;
-    bool pivotA2AEnabled;
-    bool ll128Enabled;
-    bool mscclEnabled;
   };
 
   int nChannelsOrig;
@@ -1468,44 +1461,6 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, struct ncclComm* p
   NCCLCHECKGOTO(ncclCalloc(&allGather3Data, nranks), ret, fail);
   int idx;
   NCCLCHECK(ncclTopoIdToIndex(comm->topo, GPU, comm->busId, &idx));
-  allGather3Data[rank].nc = 2;
-  if (comm->topo->nodes[GPU].count == comm->topo->nRanks &&
-       IsArchMatch(comm->topo->nodes[GPU].nodes[idx].gpu.gcn, "gfx906") && allXgmi)
-    allGather3Data[rank].nc = 4;
-  if (IsArchMatch(comm->topo->nodes[GPU].nodes[idx].gpu.gcn, "gfx908"))
-    allGather3Data[rank].nc = std::max(4/ringGraph.nChannels, 2);
-  if (comm->topo->nodes[GPU].count == comm->topo->nRanks &&
-       (comm->topo->type & RCCL_TOPO_CR8G))
-    allGather3Data[rank].nc = 4;
-  if (comm->topo->nodes[GPU].count == comm->topo->nRanks &&
-      IsArchMatch(comm->topo->nodes[GPU].nodes[idx].gpu.gcn, "gfx90a"))
-    allGather3Data[rank].nc = 4;
-  if (IsArchMatch(comm->topo->nodes[GPU].nodes[idx].gpu.gcn, "gfx90a"))
-    allGather3Data[rank].nc = std::max(allGather3Data[rank].nc, 4/ringGraph.nChannels);
-  if (ringGraph.nChannels > MAXCHANNELS/2)
-    allGather3Data[rank].nc = 1;
-  if (IsArchMatch(comm->topo->nodes[GPU].nodes[idx].gpu.gcn, "gfx94")) {
-    // Multi-node MI300A
-    int managed = 0;
-    CUDACHECK(hipDeviceGetAttribute(&managed, hipDeviceAttributeDirectManagedMemAccessFromHost, 0));
-    if (managed && nNodes > 1) {
-      // This forces the minimum channels to 24
-      allGather3Data[rank].nc = 6;
-    } else {
-      // MI300X
-      if (nranks == 2)
-        // NCCL_MIN_NCHANNELS=32
-        allGather3Data[rank].nc = 16;
-      else if (nranks == 4)
-        // NCCL_MIN_NCHANNELS=24
-        allGather3Data[rank].nc = 4;
-    }
-  }
-
-  allGather3Data[rank].pivotA2AEnabled = comm->topo->pivotA2AEnabled && rcclParamPivotAlltoallEnable();
-  comm->topo->ll128Enabled =  comm->topo->ll128Enabled || rcclParamLL128ForceEnable();
-  allGather3Data[rank].ll128Enabled = comm->topo->ll128Enabled;
-  allGather3Data[rank].mscclEnabled = comm->topo->mscclEnabled;
 
   for (int a=0; a<NCCL_NUM_ALGORITHMS; a++) {
     allGather3Data[rank].graphInfo[a].pattern = graphs[a]->pattern;
@@ -1578,15 +1533,9 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, struct ncclComm* p
 
   nChannelsOrig = comm->nChannels;
   NCCLCHECKGOTO(ncclCalloc(&allTopoRanks, comm->nRanks), ret, fail);
-  int nc;
-  nc = allGather3Data[0].nc;
   for (int i=0; i<nranks; i++) {
     allTopoRanks[i] = &allGather3Data[i].topoRanks;
-    nc = std::min(allGather3Data[i].nc, nc);
     // Make sure we align all ranks so that the tuning is consistent across ranks
-    comm->topo->pivotA2AEnabled = comm->topo->pivotA2AEnabled && allGather3Data[i].pivotA2AEnabled;
-    comm->topo->ll128Enabled = comm->topo->ll128Enabled && allGather3Data[i].ll128Enabled;
-    comm->topo->mscclEnabled = comm->topo->mscclEnabled && allGather3Data[i].mscclEnabled;
     for (int a=0; a<NCCL_NUM_ALGORITHMS; a++) {
       graphs[a]->nChannels = std::min(allGather3Data[i].graphInfo[a].nChannels, graphs[a]->nChannels);
       graphs[a]->sameChannels = std::min(allGather3Data[i].graphInfo[a].sameChannels, graphs[a]->sameChannels);
@@ -1632,7 +1581,7 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, struct ncclComm* p
 
   NCCLCHECKGOTO(ncclCalloc(&rings, nranks*MAXCHANNELS), ret, fail);
 
-  NCCLCHECKGOTO(ncclTopoPostset(comm, nodesFirstRank, nodesTreePatterns, allTopoRanks, rings, graphs, parent, nc), ret, fail);
+  NCCLCHECKGOTO(ncclTopoPostset(comm, nodesFirstRank, nodesTreePatterns, allTopoRanks, rings, graphs, parent, 1), ret, fail);
   if (comm->topo->treeDefined) NCCLCHECK(ncclTreeBasePostset(comm, &treeGraph));
 
   // AllGather3 - end
@@ -1792,13 +1741,13 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, struct ncclComm* p
       for (int c=0; c<comm->p2pnChannelsPerPeer; c++) {
         NCCLCHECKGOTO(ncclChannelCompute(comm, peer, c, ncclFuncSend, &channelId), ret, fail);
         if (comm->channels[channelId].peers[peer]->send[1].connected == 0) {
-	  comm->connectSend[peer].masks[channelId/64] |= (1UL<<(channelId%64));
+          comm->connectSend[peer] |= (1UL<<channelId);
         }
       }
       for (int c=0; c<comm->p2pnChannelsPerPeer; c++) {
         NCCLCHECKGOTO(ncclChannelCompute(comm, peer, c, ncclFuncRecv, &channelId), ret, fail);
         if (comm->channels[channelId].peers[peer]->recv[1].connected == 0) {
-	  comm->connectRecv[peer].masks[channelId/64] |= (1UL<<(channelId%64));
+          comm->connectRecv[peer] |= (1UL<<channelId);
         }
       }
     }

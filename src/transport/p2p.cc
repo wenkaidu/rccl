@@ -109,12 +109,6 @@ extern int64_t ncclParamMNNVLEnable();
 /* Determine if two peers can communicate through p2p */
 ncclResult_t p2pCanConnect(int* ret, struct ncclTopoSystem* topo, struct ncclTopoGraph* graph, struct ncclPeerInfo* info1, struct ncclPeerInfo* info2) {
   initCeOperation();
-#if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
-  if (!info1->hasFineGrain || !info2->hasFineGrain)  {
-    *ret = 0;
-    return ncclSuccess;
-  }
-#endif
 
   // MNNVL support
   if (ncclParamMNNVLEnable() != 0 && info1->hostHash != info2->hostHash) {

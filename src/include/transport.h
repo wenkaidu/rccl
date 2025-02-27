@@ -38,7 +38,6 @@ struct ncclPeerInfo {
   int cudaDev;
   int nvmlDev;
   int gdrSupport;
-  bool hasFineGrain;
   uint64_t hostHash;
   uint64_t pidHash;
   dev_t shmDev;
