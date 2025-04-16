@@ -29,13 +29,13 @@ inline __device__ int loadInt(int* ptr) {
 
 template<typename RedFn, typename T, int Unroll, int BytePerPack,
          int MultimemSrcs, int MinSrcs, int MaxSrcs,
-         int MultimemDsts, int MinDsts, int MaxDsts, int PreOpSrcs,
-         typename IntBytes, typename SrcPtrFn, typename DstPtrFn>
+         int MultimemDsts, int MinDsts, int MaxDsts, int PreOpSrcs, bool useAcc,
+         typename IntBytes, typename SrcPtrFn, typename DstPtrFn, typename AccPtrFn>
 __device__ __forceinline__ void reduceCopyPacks(
     int nThreads, int &thread,
     uint64_t redArg, uint64_t *preOpArgs, bool postOp,
     int nSrcs, SrcPtrFn const &srcPtrFn, int nDsts, DstPtrFn const &dstPtrFn,
-    IntBytes &nBytesBehind, IntBytes &nBytesAhead
+    IntBytes &nBytesBehind, IntBytes &nBytesAhead, AccPtrFn const &accPtrFn
   ) {
   static_assert(std::is_signed<IntBytes>::value, "IntBytes must be a signed integral type.");
   //if (BytePerPack == 0) __trap();
@@ -66,6 +66,7 @@ __device__ __forceinline__ void reduceCopyPacks(
   RedFn redFn(redArg);
   uintptr_t minSrcs[MinSrcs + !MinSrcs];
   uintptr_t minDsts[MinDsts + !MinDsts];
+  uintptr_t accPtr = cvta_to_global(accPtrFn()) + threadBytesBehind;
   #pragma unroll
   for (int s=0; s < MinSrcs; s++) {
     minSrcs[s] = cvta_to_global(srcPtrFn(s)) + threadBytesBehind;
@@ -155,17 +156,39 @@ __device__ __forceinline__ void reduceCopyPacks(
 
     #pragma unroll Unroll
     for (int d=0; d < MinDsts; d++) {
-      #pragma unroll Unroll
-      // Yes, for some template arguments this code will be unreachable.  That's fine.
-      // coverity[dead_error_begin]
-      for (int u=0; u < Unroll; u++) {
-        // coverity[dead_error_condition]
-        if (d < MultimemDsts) {
-          multimem_st_global(minDsts[d], acc[u]);
-        } else {
-          st_global<BytePerPack>(minDsts[d], acc[u]);
+      if (useAcc) {
+        BytePack<BytePerPack> bias[Unroll];
+        #pragma unroll Unroll
+        // Yes, for some template arguments this code will be unreachable.  That's fine.
+        // coverity[dead_error_begin]
+        for (int u=0; u < Unroll; u++) {
+          // coverity[dead_error_condition]
+          if (d < MultimemDsts) {
+            multimem_st_global(minDsts[d], acc[u]);
+          } else {
+            if (d == 0) {
+              bias[u] = ld_volatile_global<BytePerPack>(accPtr);
+              st_global<BytePerPack>(minDsts[d], applyReduce(redFn, acc[u], bias[u]));
+              accPtr += WARP_SIZE*BytePerPack;
+            }
+            else
+              st_global<BytePerPack>(minDsts[d], acc[u]);
+          }
+          minDsts[d] += WARP_SIZE*BytePerPack;
         }
-        minDsts[d] += WARP_SIZE*BytePerPack;
+      } else {
+        #pragma unroll Unroll
+        // Yes, for some template arguments this code will be unreachable.  That's fine.
+        // coverity[dead_error_begin]
+        for (int u=0; u < Unroll; u++) {
+          // coverity[dead_error_condition]
+          if (d < MultimemDsts) {
+            multimem_st_global(minDsts[d], acc[u]);
+          } else {
+            st_global<BytePerPack>(minDsts[d], acc[u]);
+          }
+          minDsts[d] += WARP_SIZE*BytePerPack;
+        }
       }
     }
     for (int d=MinDsts; (MinDsts < MaxDsts) && (d < MaxDsts) && (d < nDsts); d++) {
@@ -189,6 +212,7 @@ __device__ __forceinline__ void reduceCopyPacks(
     for (int d=0; d < MinDsts; d++) {
       minDsts[d] += (nWarps-1)*BytePerHunk;
     }
+    if (useAcc) accPtr += (nWarps-1)*BytePerHunk;
     threadBytesBehind += nWarps*BytePerHunk;
     threadBytesAhead -= nWarps*BytePerHunk;
     nHunksAhead -= nWarps;
@@ -210,12 +234,12 @@ __device__ __forceinline__ void reduceCopyPacks(
 template<int Unroll, typename RedFn, typename T,
          int MultimemSrcs, int MinSrcs, int MaxSrcs,
          int MultimemDsts, int MinDsts, int MaxDsts, int PreOpSrcs,
-         typename IntBytes, typename SrcPtrFn, typename DstPtrFn>
+         typename IntBytes, typename SrcPtrFn, typename DstPtrFn, typename AccPtrFn>
 __device__ __forceinline__ void reduceCopy(
     int thread, int nThreads,
     uint64_t redArg, uint64_t *preOpArgs, bool postOp,
     int nSrcs, SrcPtrFn const &srcPtrFn, int nDsts, DstPtrFn const &dstPtrFn,
-    IntBytes nElts
+    IntBytes nElts, AccPtrFn const &accPtrFn
   ) {
   static_assert(MultimemSrcs <= MinSrcs && MultimemDsts <= MinDsts, "Multimem pointers cannot exceed respective Min values.");
   //int nWarps = nThreads/WARP_SIZE;
@@ -230,6 +254,7 @@ __device__ __forceinline__ void reduceCopy(
 
   IntBytes nBytesBehind = 0;
   IntBytes nBytesAhead = nElts*sizeof(T);
+  bool useAcc = accPtrFn() != nullptr;
 
   #if __cpp_if_constexpr
   if constexpr (BigPackSize > sizeof(T)) {
@@ -243,22 +268,40 @@ __device__ __forceinline__ void reduceCopy(
     aligned = !(__any(!aligned));
     if (aligned) {
 #if defined(__gfx90a__)
+      if (useAcc)
       reduceCopyPacks<RedFn, T, ((MinSrcs > 1) ? 2 : Unroll), BigPackSize,
-        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
         (nThreads, thread, redArg, preOpArgs, postOp,
-         nSrcs, srcPtrFn, nDsts, dstPtrFn, nBytesBehind, nBytesAhead);
+         nSrcs, srcPtrFn, nDsts, dstPtrFn, nBytesBehind, nBytesAhead, accPtrFn);
+      else
+      reduceCopyPacks<RedFn, T, ((MinSrcs > 1) ? 2 : Unroll), BigPackSize,
+        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+        (nThreads, thread, redArg, preOpArgs, postOp,
+         nSrcs, srcPtrFn, nDsts, dstPtrFn, nBytesBehind, nBytesAhead, accPtrFn);
 #else
+      if (useAcc)
       reduceCopyPacks<RedFn, T, Unroll*((MinSrcs == 1 && MinDsts == 1) ? 2 : 1), BigPackSize,
-        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
         (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-         nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead);
+         nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
+      else
+      reduceCopyPacks<RedFn, T, Unroll*((MinSrcs == 1 && MinDsts == 1) ? 2 : 1), BigPackSize,
+        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+        (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
+         nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
 #endif
       if (nBytesAhead == 0) return;
 
+      if (useAcc)
       reduceCopyPacks<RedFn, T, /*Unroll=*/1, BigPackSize,
-        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
         (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-         nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead);
+         nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
+      else
+      reduceCopyPacks<RedFn, T, /*Unroll=*/1, BigPackSize,
+        MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+        (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
+         nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
       if (nBytesAhead == 0) return;
     }
   }
@@ -285,28 +328,52 @@ __device__ __forceinline__ void reduceCopy(
 */
 #if defined(__gfx90a__)
   if (MinSrcs > 1) {
+    if (useAcc)
     reduceCopyPacks<RedFn, T, (Unroll*4 + sizeof(T) - 1)/sizeof(T), sizeof(T),
-    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
     (nThreads, thread, redArg, preOpArgs, postOp,
-     nSrcs, srcPtrFn, nDsts, dstPtrFn, nBytesBehind, nBytesAhead);
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, nBytesBehind, nBytesAhead, accPtrFn);
+    else
+    reduceCopyPacks<RedFn, T, (Unroll*4 + sizeof(T) - 1)/sizeof(T), sizeof(T),
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+    (nThreads, thread, redArg, preOpArgs, postOp,
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, nBytesBehind, nBytesAhead, accPtrFn);
   } else {
+    if (useAcc)
     reduceCopyPacks<RedFn, T, Unroll*(16/sizeof(T))/2, /*BytePerPack=*/sizeof(T),
-    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
     (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead);
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
+    else
+    reduceCopyPacks<RedFn, T, Unroll*(16/sizeof(T))/2, /*BytePerPack=*/sizeof(T),
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+    (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
   }
 #else
+  if (useAcc)
   reduceCopyPacks<RedFn, T, Unroll*(16/sizeof(T))/2, /*BytePerPack=*/sizeof(T),
-    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
     (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead);
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
+  else
+  reduceCopyPacks<RedFn, T, Unroll*(16/sizeof(T))/2, /*BytePerPack=*/sizeof(T),
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+    (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
 #endif
   if (nBytesAhead == 0) return;
 
+  if (useAcc)
   reduceCopyPacks<RedFn, T, /*Unroll=*/1, /*BytePerPack=*/sizeof(T),
-    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs>
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, true>
     (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
-     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead);
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
+  else
+  reduceCopyPacks<RedFn, T, /*Unroll=*/1, /*BytePerPack=*/sizeof(T),
+    MultimemSrcs, MinSrcs, MaxSrcs, MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, false>
+    (nThreads, /*&*/thread, redArg, preOpArgs, postOp,
+     nSrcs, srcPtrFn, nDsts, dstPtrFn, /*&*/nBytesBehind, /*&*/nBytesAhead, accPtrFn);
 }
 
 template<int Unroll, typename RedFn, typename T,
@@ -317,14 +384,14 @@ __device__ __forceinline__ void reduceCopy(
     int thread, int nThreads,
     uint64_t redArg, uint64_t *preOpArgs, bool postOp,
     int nSrcs, void** srcPtrs, int nDsts, void** dstPtrs,
-    IntBytes nElts
+    IntBytes nElts, void *accPtr = nullptr
   ) {
   reduceCopy<Unroll, RedFn, T,
              MultimemSrcs, MinSrcs, MaxSrcs,
              MultimemDsts, MinDsts, MaxDsts, PreOpSrcs, IntBytes>
     (thread, nThreads, redArg, preOpArgs, postOp,
      nSrcs, [=]__device__(int i) { return srcPtrs[i]; },
-     nDsts, [=]__device__(int i) { return dstPtrs[i]; }, nElts);
+     nDsts, [=]__device__(int i) { return dstPtrs[i]; }, nElts, [=]__device__() { return accPtr; });
 }
 
 #endif // COMMON_KERNEL_H_
