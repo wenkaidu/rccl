@@ -27,17 +27,28 @@
 #endif
 
 #if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1200__) || defined(__gfx1201__)
-#define __trace_hwreg()
+#define __trace_hwreg() \
+  collTrace->data_0 = 0;
 #else
 #define __trace_hwreg() \
   asm volatile ("s_getreg_b32 %0, hwreg(HW_REG_HW_ID)" : "=s" (collTrace->data_0));
 #endif
+
+#if defined(__gfx942__) || defined(__gfx950__)
+#define __trace_xccid() \
+  { int32_t xccId; \
+    asm volatile ("s_getreg_b32 %0, hwreg(HW_REG_XCC_ID)" : "=s" (xccId)); \
+    collTrace->xccId = xccId; }
+#else
+#define __trace_xccid() \
+  collTrace->xccId = 0;
+#endif
+
 #ifdef ENABLE_COLLTRACE
   #define INC_COLL_TRACE \
     uint32_t pos = __hip_atomic_fetch_add(&ncclShmem.collTraceTail->tail, 1, __ATOMIC_SEQ_CST, __HIP_MEMORY_SCOPE_WORKGROUP)%COLLTRACE_NUM_ITEMS; \
     struct ncclCollTrace* collTrace = ncclShmem.collTrace+pos; \
     collTrace->timeStamp = wall_clock64(); \
-    collTrace->bid = blockIdx.x; \
     collTrace->tid = threadIdx.x; \
     collTrace->channelId = ncclShmem.channelId;
     // TODO: switch to atomicInc after llvm crash is fixed
@@ -46,7 +57,8 @@
   #define traceKernelLaunch(launch_type, ix) { \
     INC_COLL_TRACE \
     collTrace->funcIndex = ncclShmem.funcId; \
-    __trace_hwreg()\
+    __trace_hwreg() \
+    __trace_xccid() \
     collTrace->batchIx = ix; \
     if (ncclShmem.workType == ncclDevWorkTypeP2p) { \
       struct ncclDevWorkP2p *p2pWork = (struct ncclDevWorkP2p*)ncclShmem.workStorage; \
