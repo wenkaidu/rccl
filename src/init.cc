@@ -266,10 +266,10 @@ void *ncclCommThreadMain(void *arg) {
       }
       for (int i = 0; i < count; i++) {
         volatile struct ncclCollTrace *td = comm->collTrace+COLLTRACE_NUM_ITEMS*channel+head[channel]%COLLTRACE_NUM_ITEMS;
-        head[channel] ++;
         const uint8_t type = td->type;
         if (type == ncclCollTraceNotReady)
-          continue;
+          break;
+        head[channel] ++;
         char line[1024];
         int offset = 0;
         const uint16_t fIdx = td->funcIndex;
@@ -317,7 +317,7 @@ void *ncclCommThreadMain(void *arg) {
           }
         }
         INFO(NCCL_COLL, "%s td->type:%d", line, type);
-        td->type = ncclCollTraceNotReady;
+        __atomic_store_n(&td->type, ncclCollTraceNotReady, __ATOMIC_RELAXED);
       }
     }
     if (comm->collTraceExit && numActiveChans == 0)
@@ -446,7 +446,7 @@ static ncclResult_t commFree(ncclComm_t comm) {
       ncclCommThreadMain((void *)comm);
   }
   NCCLCHECK(ncclCudaFree((void *)comm->collTrace));
-  NCCLCHECK(ncclCudaFree((void *)comm->collTraceTail));
+  NCCLCHECK(ncclCudaHostFree((void *)comm->collTraceTail));
 #endif
 
   free(comm->peerInfo);
@@ -638,8 +638,12 @@ static ncclResult_t commAlloc(struct ncclComm* comm, struct ncclComm* parent, in
   comm->dmaBufSupport = (dmaBufSupported(comm) == ncclSuccess) ? true : false;
 
 #ifdef ENABLE_COLLTRACE
-  NCCLCHECK(ncclCudaCalloc(&comm->collTraceTail, MAXCHANNELS));
+  NCCLCHECK(ncclCudaHostCalloc(&comm->collTraceTail, MAXCHANNELS));
+#if defined(HIP_UNCACHED_MEMORY)
+  NCCLCHECK(ncclCudaCalloc(&comm->collTrace, COLLTRACE_NUM_ITEMS*MAXCHANNELS, nullptr, hipDeviceMallocUncached));
+#else
   NCCLCHECK(ncclCudaCalloc(&comm->collTrace, COLLTRACE_NUM_ITEMS*MAXCHANNELS));
+#endif
   comm->collTraceExit = 0;
   comm->collTraceEnabled = false; // we can enable colltrace without starting a thread
   if ((ncclDebugLevel >= NCCL_LOG_INFO) && rcclParamKernelCollTraceEnable()) {

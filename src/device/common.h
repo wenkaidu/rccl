@@ -75,7 +75,7 @@
       collTrace->p2p.recvRegistered = p2pWork->recvNetReg; \
       collTrace->p2pOpCount[0] = p2pWork->sendOpCount; \
       collTrace->p2pOpCount[1] = p2pWork->recvOpCount; \
-      collTrace->type = (launch_type) | ncclCollTraceP2pElemType; \
+      __hip_atomic_store(&collTrace->type, (launch_type) | ncclCollTraceP2pElemType, __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_WORKGROUP); \
     } else if (ncclShmem.workType == ncclDevWorkTypeColl) { \
       struct ncclDevWorkColl *collWork = (struct ncclDevWorkColl*)ncclShmem.workStorage; \
       collTrace->coll.nWarps = collWork->nWarps; \
@@ -83,7 +83,7 @@
       collTrace->coll.bid = ncclShmem.channelId - collWork->channelLo; \
       collTrace->coll.root = collWork->root; \
       collTrace->opCount = collWork->opCount; \
-      collTrace->type = (launch_type) | ncclCollTraceCollElemType; \
+      __hip_atomic_store(&collTrace->type, (launch_type) | ncclCollTraceCollElemType, __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_WORKGROUP); \
     } \
   }
   #define traceKernelEnd(end_type)  { \
@@ -93,11 +93,11 @@
       struct ncclDevWorkP2p *p2pWork = (struct ncclDevWorkP2p*)ncclShmem.workStorage; \
       collTrace->p2pOpCount[0] = p2pWork->sendOpCount; \
       collTrace->p2pOpCount[1] = p2pWork->recvOpCount; \
-      collTrace->type = (end_type) | ncclCollTraceP2pElemType; \
+      __hip_atomic_store(&collTrace->type, (end_type) | ncclCollTraceP2pElemType, __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_WORKGROUP); \
     } else if (ncclShmem.workType == ncclDevWorkTypeColl) { \
       struct ncclDevWorkColl *collWork = (struct ncclDevWorkColl*)ncclShmem.workStorage; \
       collTrace->opCount = collWork->opCount; \
-      collTrace->type = (end_type) | ncclCollTraceCollElemType; \
+      __hip_atomic_store(&collTrace->type, (end_type) | ncclCollTraceCollElemType, __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_WORKGROUP); \
     } \
   }
   #define traceData(data2, data4, data8_0, data8_1) { \
@@ -106,12 +106,12 @@
     collTrace->data_0 = data4; \
     collTrace->opCount = data8_0; \
     collTrace->data_1 = data8_1; \
-    collTrace->type = ncclCollTraceDataType; \
+    __hip_atomic_store(&collTrace->type, ncclCollTraceDataType, __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_WORKGROUP); \
   }
   #define traceAbort(){\
     INC_COLL_TRACE\
     collTrace->funcIndex = ncclShmem.funcId;\
-    collTrace->type = ncclCollTraceAbortType;\
+    __hip_atomic_store(&collTrace->type, ncclCollTraceAbortType, __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_WORKGROUP); \
   }
 #else
 #define traceKernelLaunch(launch_type, batchIx)
