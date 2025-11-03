@@ -1857,10 +1857,10 @@ ncclResult_t ncclLaunchFinish(struct ncclComm* comm) {
     ncclIntruQueueConstruct(&planner->planQueue);
 
     bool capturing = ncclCudaGraphValid(planner->capturingGraph);
-    //cudaStream_t launchStream = planner->streams->stream; // First user stream gets launch // unused variable - compiler warning
+    cudaStream_t launchStream = planner->streams->stream; // First user stream gets launch
     cudaStream_t deviceStream, launchOrder;
-
     cudaEvent_t finishedEvent = comm->sharedRes->scratchEvent;
+    CUDACHECK(cudaEventRecord(finishedEvent, launchStream));
 
     if (comm->workFifoProduced - comm->workFifoProducedLastRecorded > comm->workFifoBytes/8) {
       comm->workFifoProducedLastRecorded = comm->workFifoProduced;
@@ -1875,8 +1875,6 @@ ncclResult_t ncclLaunchFinish(struct ncclComm* comm) {
     }
 
     if (capturing || planner->numStreams != 1) {
-      // CUDACHECK(cudaEventRecord(finishedEvent, launchStream));
-
       // deviceStream waits on userStream[0]
       NCCLCHECK(ncclStrongStreamAcquiredWorkStream(planner->capturingGraph, &comm->sharedRes->deviceStream, /*concurrent=*/false, &deviceStream));
 
