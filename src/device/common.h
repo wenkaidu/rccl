@@ -31,7 +31,9 @@
   collTrace->data_0 = 0;
 #else
 #define __trace_hwreg() \
-  asm volatile ("s_getreg_b32 %0, hwreg(HW_REG_HW_ID)" : "=s" (collTrace->data_0));
+  { int32_t hwid; \
+    asm volatile ("s_getreg_b32 %0, hwreg(HW_REG_HW_ID)" : "=s" (hwid)); \
+    collTrace->data_0 = hwid >> 4; }
 #endif
 
 #if defined(__gfx942__) || defined(__gfx950__)

@@ -317,7 +317,9 @@ void *ncclCommThreadMain(void *arg) {
           }
         }
         INFO(NCCL_COLL, "%s td->type:%d", line, type);
-        __atomic_store_n(&td->type, ncclCollTraceNotReady, __ATOMIC_RELAXED);
+        volatile uint8_t *tdtype = &td->type;
+        *tdtype = ncclCollTraceNotReady;
+        (*tdtype); // read back for flushing
       }
     }
     if (comm->collTraceExit && numActiveChans == 0)
