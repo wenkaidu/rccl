@@ -524,7 +524,7 @@ static ncclResult_t commFree(ncclComm_t comm) {
   NCCLCHECK(ncclProfilerPluginFinalize(comm));
   NCCLCHECK(ncclNetFinalize(comm));
   // Disable until we validate NCCL_LAUNCH_IMPLICIT_ORDER support.
-  //ncclCudaContextDrop(comm->context);
+  ncclCudaContextDrop(comm->context);
   free(comm);
 
   return ncclSuccess;
@@ -620,7 +620,7 @@ static ncclResult_t commAlloc(struct ncclComm* comm, struct ncclComm* parent, in
   CUDACHECK(cudaGetDevice(&comm->cudaDev));
 
   // Disable until we validate NCCL_LAUNCH_IMPLICIT_ORDER support.
-  //NCCLCHECK(ncclCudaContextTrack(&comm->context));
+  NCCLCHECK(ncclCudaContextTrack(&comm->context));
 
   NCCLCHECK(getBusId(comm->cudaDev, &comm->busId));
   char busId[]="0000:00:00.0";
