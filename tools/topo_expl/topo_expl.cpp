@@ -139,6 +139,7 @@ NodeModelDesc model_descs[] = {
   // GFX 950
   {"topo_8p_950.xml",                    " 8gfx950 1H7XGMI  8NIC 2AMD   A"},
   {"topo_8p_950_1.xml",                  " 8gfx950 1H7XGMI  4NIC 2AMD   B"},
+  {"topo_8p_950_2.xml",                  " 8gfx950 1H7XGMI  8NIC 2AMD   C"},
 };
 
 NCCL_PARAM(MaxCTAs, "MAX_CTAS", MAXCHANNELS);
